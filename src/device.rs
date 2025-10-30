@@ -83,25 +83,7 @@ impl DeviceExport {
     }
 
     fn read_pdb_file(path: &PathBuf) -> crate::Result<Pdb> {
-        let mut reader = std::fs::File::open(path)?;
-        let header = Header::read_args(&mut reader, (DatabaseType::Plain,))?;
-        let pages = header
-            .tables
-            .iter()
-            .flat_map(|table| {
-                header
-                    .read_pages(
-                        &mut reader,
-                        binrw::Endian::NATIVE,
-                        (&table.first_page, &table.last_page, DatabaseType::Plain),
-                    )
-                    .into_iter()
-            })
-            .flatten()
-            .collect::<Vec<Page>>();
-
-        let pdb = Pdb { header, pages };
-        Ok(pdb)
+        todo!()
     }
 
     /// Load PDB file.
@@ -595,26 +577,7 @@ pub struct Playlist {
 impl Pdb {
     /// Create a new `Pdb` object by reading the PDB file at the given path.
     pub fn open_from_path(path: &PathBuf) -> crate::Result<Self> {
-        let mut reader = std::fs::File::open(path)?;
-        let header = Header::read_args(&mut reader, (DatabaseType::Plain,))?;
-        let pages = header
-            .tables
-            .iter()
-            .flat_map(|table| {
-                header
-                    .read_pages(
-                        &mut reader,
-                        binrw::Endian::NATIVE,
-                        (&table.first_page, &table.last_page, DatabaseType::Plain),
-                    )
-                    .into_iter()
-            })
-            .flatten()
-            .collect::<Vec<Page>>();
-
-        let pdb = Pdb { header, pages };
-
-        Ok(pdb)
+        todo!()
     }
 
     fn get_rows_by_page_type(&self, page_type: PlainPageType) -> impl Iterator<Item = &Row> + '_ {

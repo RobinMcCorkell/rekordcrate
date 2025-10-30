@@ -20,6 +20,7 @@
 
 pub mod bitfields;
 pub mod ext;
+pub mod io;
 pub mod offset_array;
 pub mod string;
 
@@ -35,11 +36,11 @@ use std::fmt;
 use crate::pdb::ext::{ExtPageType, ExtRow};
 use crate::pdb::offset_array::{OffsetArray, OffsetSize};
 use crate::pdb::string::DeviceSQLString;
-use crate::util::{parse_at_offsets, write_at_offsets, ColorIndex, FileType};
+use crate::util::{parse_at_offsets, write_at_offsets, ColorIndex, FileType, TableIndex};
 use binrw::{
     binread, binrw,
-    io::{Read, Seek, SeekFrom, Write},
-    BinRead, BinResult, BinWrite, Endian,
+    io::{Seek, SeekFrom, Write},
+    BinResult, BinWrite, Endian,
 };
 use thiserror::Error;
 
@@ -52,9 +53,6 @@ pub enum PdbError {
     /// Invalid flags were passed when creating an `IndexEntry`.
     #[error("Invalid index flags (expected max 3 bits): {0:#b}")]
     InvalidIndexFlags(u8),
-    /// A row was added to a full `RowGroup`.
-    #[error("Cannot add row to a full row group (max 16 rows)")]
-    RowGroupFull,
 }
 
 /// The type of the database were looking at.
@@ -141,9 +139,9 @@ pub enum PlainPageType {
 /// Points to a table page and can be used to calculate the page's file offset by multiplying it
 /// with the page size (found in the file header).
 #[binrw]
-#[derive(Clone, Debug, PartialEq, Eq, PartialOrd)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd)]
 #[brw(little)]
-pub struct PageIndex(u32);
+pub struct PageIndex(pub(crate) u32);
 
 impl TryFrom<u32> for PageIndex {
     type Error = PdbError;
@@ -217,31 +215,24 @@ pub struct Header {
 }
 
 impl Header {
-    /// Returns pages for the given Table.
-    pub fn read_pages<R: Read + Seek>(
-        &self,
-        reader: &mut R,
-        _: Endian,
-        args: (&PageIndex, &PageIndex, DatabaseType),
-    ) -> BinResult<Vec<Page>> {
-        let endian = Endian::Little;
-        let (first_page, last_page, db_type) = args;
+    /// Finds the table for a given page type.
+    #[must_use]
+    pub fn find_table(&self, page_type: PageType) -> Option<(TableIndex, &Table)> {
+        self.tables
+            .iter()
+            .enumerate()
+            .find(|(_, table)| table.page_type == page_type)
+            .map(|(i, table)| (TableIndex::from(i), table))
+    }
 
-        let mut pages = vec![];
-        let mut page_index = first_page.clone();
-        loop {
-            let page_offset = SeekFrom::Start(page_index.offset(self.page_size));
-            reader.seek(page_offset).map_err(binrw::Error::Io)?;
-            let page = Page::read_options(reader, endian, (self.page_size, db_type))?;
-            let is_last_page = &page.header.page_index == last_page;
-            page_index = page.header.next_page.clone();
-            pages.push(page);
-
-            if is_last_page {
-                break;
-            }
-        }
-        Ok(pages)
+    /// Finds the table for a given page type.
+    #[must_use]
+    pub fn find_table_mut(&mut self, page_type: PageType) -> Option<(TableIndex, &mut Table)> {
+        self.tables
+            .iter_mut()
+            .enumerate()
+            .find(|(_, table)| table.page_type == page_type)
+            .map(|(i, table)| (TableIndex::from(i), table))
     }
 }
 
@@ -451,9 +442,45 @@ impl PageContent {
         }
     }
 
+    /// Returns a reference to the data content of the page if it is a data page.
+    #[must_use]
+    pub fn as_data(&self) -> Option<&DataPageContent> {
+        match self {
+            PageContent::Data(data) => Some(data),
+            _ => None,
+        }
+    }
+
+    /// Returns a mutable reference to the data content of the page if it is a data page.
+    #[must_use]
+    pub fn as_data_mut(&mut self) -> Option<&mut DataPageContent> {
+        match self {
+            PageContent::Data(data) => Some(data),
+            _ => None,
+        }
+    }
+
     /// Returns the index content of the page if it is an index page.
     #[must_use]
     pub fn into_index(self) -> Option<IndexPageContent> {
+        match self {
+            PageContent::Index(index) => Some(index),
+            _ => None,
+        }
+    }
+
+    /// Returns a reference to the index content of the page if it is an index page.
+    #[must_use]
+    pub fn as_index(&self) -> Option<&IndexPageContent> {
+        match self {
+            PageContent::Index(index) => Some(index),
+            _ => None,
+        }
+    }
+
+    /// Returns a mutable reference to the index content of the page if it is an index page.
+    #[must_use]
+    pub fn as_index_mut(&mut self) -> Option<&mut IndexPageContent> {
         match self {
             PageContent::Index(index) => Some(index),
             _ => None,
@@ -515,7 +542,7 @@ impl PageHeader {
 /// followed by the data section that holds the row data. Each row needs to be located using an
 /// offset found in the page footer at the end of the page.
 #[binrw]
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 #[brw(little)]
 #[br(import(page_size: u32, db_type: DatabaseType))]
 #[bw(import(page_size: u32))]
@@ -628,7 +655,8 @@ pub struct RowGroup {
 }
 
 impl RowGroup {
-    const MAX_ROW_COUNT: usize = 16;
+    /// Maximum number of rows in a row group.
+    pub const MAX_ROW_COUNT: usize = 16;
     const BINARY_SIZE: u32 = (Self::MAX_ROW_COUNT as u32) * 2 + 4; // size the serialized structure
 
     fn present_rows_offsets(&self) -> impl Iterator<Item = u16> + '_ {

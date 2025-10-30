@@ -6,37 +6,33 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-use binrw::BinRead;
-use rekordcrate::pdb::{DatabaseType, Header, PageType, PlainPageType};
+use rekordcrate::pdb::io::Database;
+use rekordcrate::pdb::{DatabaseType, PageType, PlainPageType};
 use std::io::Cursor;
 
 fn assert_pdb_row_count(page_type: PlainPageType, expected_row_count: usize) {
     let data = include_bytes!("../data/pdb/num_rows/export.pdb").as_slice();
     let mut reader = Cursor::new(data);
-    let header = Header::read(&mut reader).expect("failed to parse header");
+    let mut db = Database::open_non_persistent(&mut reader, DatabaseType::Plain)
+        .expect("Failed to open database");
 
-    let table = header
-        .tables
-        .iter()
-        .find(|table| table.page_type == PageType::Plain(page_type))
-        .expect("Failed to find table of given type");
-    let pages = header
-        .read_pages(
-            &mut reader,
-            binrw::Endian::NATIVE,
-            (&table.first_page, &table.last_page, DatabaseType::Plain),
-        )
-        .expect("failed to read pages");
+    let page_iter = db
+        .load_pages(PageType::Plain(page_type))
+        .expect("Failed to load pages for page type");
 
-    let actual_row_count: usize = pages
-        .into_iter()
-        .filter_map(|page| page.content.into_data())
-        .map(|data_content| data_content.rows.len())
-        .sum();
+    let actual_row_count: usize = page_iter
+        .filter_map(|page| {
+            page.content
+                .as_data()
+                .map(|data_content| data_content.rows.len())
+        })
+        .try_fold(0, |acc, res| res.map(|len| acc + len))
+        .expect("Failed to count rows");
+
     assert_eq!(
         actual_row_count, expected_row_count,
         "wrong row count for page type {:?}",
-        table.page_type
+        page_type
     );
 }
 
