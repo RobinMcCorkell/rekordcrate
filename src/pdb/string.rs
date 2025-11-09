@@ -190,6 +190,7 @@ enum DeviceSQLStringImpl {
         flags: u8,
 
         #[br(temp)]
+        #[br(assert(length >= 4))]
         #[bw(calc = content.byte_count().unwrap() + 4)]
         length: u16,
 

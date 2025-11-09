@@ -153,7 +153,6 @@ fn dump_pdb(path: &PathBuf, typ: DatabaseType) -> rekordcrate::Result<()> {
                         println!("      {:?}", entry);
                     }
                 }
-                PageContent::Unknown => (),
             }
         }
     }

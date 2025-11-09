@@ -39,7 +39,7 @@ use binrw::{
 };
 use thiserror::Error;
 
-/// An error that can occur when parsing a PDB file.
+/// An error that can occur when handling PDB data structures.
 #[derive(Debug, Error)]
 pub enum PdbError {
     /// An invalid value was passed when creating a `PageIndex`.
@@ -67,6 +67,7 @@ pub enum PdbError {
 struct LazyDatabase {
     /// The PDB header.
     #[brw(args(db_type))]
+    #[bw(pad_size_to = header.page_size as usize)]
     header: Header,
     /// The pages of the database, initially not loaded.
     #[br(calc = vec![LazyPage::NotLoaded; (header.next_unused_page.0 - 1) as usize])]
@@ -85,11 +86,18 @@ impl BinWrite for LazyPage {
 
     fn write_options<W: Write + Seek>(
         &self,
-        _writer: &mut W,
-        _endian: Endian,
-        (_db_type, _page_size): Self::Args<'_>,
+        writer: &mut W,
+        endian: Endian,
+        (db_type, page_size): Self::Args<'_>,
     ) -> BinResult<()> {
-        todo!()
+        match self {
+            LazyPage::NotLoaded => {
+                // Just seek forward by without writing anything.
+                writer.seek(SeekFrom::Current(page_size as i64))?;
+                Ok(())
+            }
+            LazyPage::Loaded(page) => page.write_options(writer, endian, (page_size, db_type)),
+        }
     }
 }
 
@@ -184,6 +192,34 @@ impl<'r, R: Read + Seek> Database<'r, R> {
     #[must_use]
     pub fn get_header_mut(&mut self) -> &mut Header {
         &mut self.content.header
+    }
+}
+
+impl<'rw, RW: Read + Write + Seek> Database<'rw, RW> {
+    /// Opens a PDB database for reading and writing.
+    pub fn open(io: &'rw mut RW, db_type: DatabaseType) -> Result<Self, PdbError> {
+        let endian = Endian::Little;
+        let content = LazyDatabase::read_options(io, endian, (db_type,))?;
+        Ok(Self {
+            io,
+            db_type,
+            content,
+        })
+    }
+
+    /// Flushes all changes to the underlying IO.
+    pub fn flush(&mut self) -> Result<(), PdbError> {
+        let endian = Endian::Little;
+        self.io.seek(SeekFrom::Start(0)).unwrap();
+        self.content
+            .write_options(self.io, endian, (self.db_type,))?;
+        Ok(())
+    }
+
+    /// Closes the database, flushing changes.
+    pub fn close(mut self) -> Result<(), PdbError> {
+        self.flush()?;
+        Ok(())
     }
 }
 
@@ -570,8 +606,6 @@ pub enum PageContent {
     /// The page is an index page.
     #[br(pre_assert(page_flags.is_index_page()))]
     Index(#[bw(args(page_size,))] IndexPageContent),
-    /// The page is of an unknown or unsupported format.
-    Unknown,
 }
 
 impl PageContent {
@@ -593,6 +627,15 @@ impl PageContent {
         }
     }
 
+    /// Returns a mutable reference to the data content of the page if it is a data page.
+    #[must_use]
+    pub fn as_data_mut(&mut self) -> Option<&mut DataPageContent> {
+        match self {
+            PageContent::Data(data) => Some(data),
+            _ => None,
+        }
+    }
+
     /// Returns the index content of the page if it is an index page.
     #[must_use]
     pub fn into_index(self) -> Option<IndexPageContent> {
@@ -605,6 +648,15 @@ impl PageContent {
     /// Returns a reference to the index content of the page if it is an index page.
     #[must_use]
     pub fn as_index(&self) -> Option<&IndexPageContent> {
+        match self {
+            PageContent::Index(index) => Some(index),
+            _ => None,
+        }
+    }
+
+    /// Returns a mutable reference to the index content of the page if it is an index page.
+    #[must_use]
+    pub fn as_index_mut(&mut self) -> Option<&mut IndexPageContent> {
         match self {
             PageContent::Index(index) => Some(index),
             _ => None,
@@ -741,6 +793,10 @@ impl BinWrite for DataPageContent {
         endian: Endian,
         (page_size,): Self::Args<'_>,
     ) -> BinResult<()> {
+        let page_content_start_pos = writer.stream_position()?;
+        let page_content_end_pos =
+            page_content_start_pos + page_size as u64 - Page::HEADER_SIZE as u64;
+
         self.unknown5.write_options(writer, endian, ())?;
         self.num_rows_large.write_options(writer, endian, ())?;
         self.unknown6.write_options(writer, endian, ())?;
@@ -750,10 +806,8 @@ impl BinWrite for DataPageContent {
 
         let mut relative_row_offset: u64 = 0;
 
-        // Seek to the very end of the page
-        writer.seek(SeekFrom::Current(
-            (page_size - Page::HEADER_SIZE - DataPageContent::HEADER_SIZE).into(),
-        ))?;
+        // Seek to the very end of the page.
+        writer.seek(SeekFrom::Start(page_content_end_pos))?;
 
         for (i, row_group) in self.row_groups.iter().enumerate() {
             relative_row_offset = row_group.write_options_and_get_row_offset(
@@ -762,6 +816,10 @@ impl BinWrite for DataPageContent {
                 (i, header_end_pos, relative_row_offset),
             )?;
         }
+
+        // Seek to the end of the page for later writers.
+        writer.seek(SeekFrom::Start(page_content_end_pos))?;
+
         Ok(())
     }
 }
@@ -1444,7 +1502,7 @@ pub struct Track {
     /// Color row ID for this track (non-zero if set).
     color: ColorIndex,
     /// User rating of this track (0 to 5 starts).
-    rating: u8,
+    pub rating: u8,
     /// Format of the file.
     file_type: FileType,
     #[brw(args(0x5C, subtype.get_offset_size(), ()))]
