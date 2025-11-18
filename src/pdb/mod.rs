@@ -155,6 +155,99 @@ impl<'r, R: Read + Seek> Database<'r, R> {
         }
     }
 
+    /// Allocate a new (empty) page for the given table.
+    pub fn allocate_page_for_table(
+        &mut self,
+        table_index: TableIndex,
+    ) -> Result<&mut Page, PdbError> {
+        // Allocate a new empty page.
+        self.content.pages.push(LazyPage::NotLoaded);
+        let next_unused_page = PageIndex::try_from(self.content.pages.len() as u32)?;
+
+        // Update the header to extend the table with its empty candidate.
+        let header = self.get_header_mut();
+        let table = header
+            .tables
+            .get_mut(table_index.0)
+            .ok_or_else(|| PdbError::InvalidTableIndex(table_index))?;
+
+        let page_type = table.page_type;
+        let new_page = table.empty_candidate;
+        table.last_page = new_page;
+        let empty_candidate = header.next_unused_page;
+        table.empty_candidate = empty_candidate;
+        header.next_unused_page = next_unused_page;
+
+        // Construct the new page as an empty data page.
+        let page_ref = self
+            .content
+            .pages
+            .get_mut(new_page.0 as usize - 1)
+            .ok_or_else(|| PdbError::InvalidPageIndex(new_page.0))?;
+        *page_ref = LazyPage::Loaded(Page {
+            page_index: new_page,
+            page_type,
+            next_page: empty_candidate,
+            unknown1: 0,
+            unknown2: 0,
+            num_rows_small: 0,
+            unknown3: 0,
+            unknown4: 0,
+            page_flags: PageFlags(0x24),
+            free_size: 4050,
+            used_size: 0,
+            content: PageContent::Data(DataPageContent {
+                unknown5: 0,
+                num_rows_large: 0,
+                unknown6: 0,
+                unknown7: 0,
+                row_groups: vec![],
+            }),
+        });
+
+        self.load_page(new_page)
+    }
+
+    /// Create a new table in the database.
+    pub fn create_table(&mut self, page_type: PageType) -> Result<usize, PdbError> {
+        let index_page = PageIndex::try_from(self.content.pages.len() as u32 + 1)?;
+        let empty_page = PageIndex::try_from(self.content.pages.len() as u32 + 2)?;
+        self.content.pages.push(LazyPage::Loaded(Page {
+            page_index: index_page,
+            page_type,
+            next_page: empty_page,
+            unknown1: 0,
+            unknown2: 0,
+            num_rows_small: 0,
+            unknown3: 0,
+            unknown4: 0,
+            page_flags: PageFlags(0x64),
+            free_size: 0, // Free size is always zero for an index page.
+            used_size: 0, // Used size is always zero for an index page.
+            content: PageContent::Index(IndexPageContent {
+                unknown_a: 0x1FFF,
+                unknown_b: 0x1FFF,
+                next_offset: 0,
+                page_index: index_page,
+                next_page: empty_page,
+                first_empty: 0x1FFF,
+                entries: vec![],
+            }),
+        }));
+        // The empty page is typically zeroed out so don't even bother loading it in memory.
+        self.content.pages.push(LazyPage::NotLoaded);
+
+        let table_index = self.content.header.tables.len();
+        self.content.header.tables.push(Table {
+            page_type,
+            empty_candidate: empty_page,
+            first_page: index_page,
+            last_page: index_page,
+        });
+
+        Ok(table_index)
+    }
+
     /// Loads all pages for a table into memory, returning their indices.
     pub fn load_pages_for_table(
         &mut self,
@@ -352,10 +445,8 @@ pub struct Table {
     /// Identifies the type of rows that this table contains.
     #[brw(args(db_type))]
     pub page_type: PageType,
-    /// Unknown field, maybe links to a chain of empty pages if the database is ever garbage
-    /// collected (?).
-    #[allow(dead_code)]
-    empty_candidate: u32,
+    /// Empty page to allocate next.
+    pub empty_candidate: PageIndex,
     /// Index of the first page that belongs to this table.
     ///
     /// *Note:* The first page apparently does not contain any rows. If the table is non-empty, the
