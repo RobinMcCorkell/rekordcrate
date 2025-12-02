@@ -467,9 +467,9 @@ impl fmt::Debug for IndexEntry {
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[br(little)]
 pub struct IndexPageContent {
-    /// Unknown field, usually `1fff` or `0001`.
+    /// Unknown field, usually `0x1fff` or `0x0001`.
     pub unknown_a: u16,
-    /// Unknown field, usually `1fff` or `0000`.
+    /// Unknown field, usually `0x1fff` or `0x0000`.
     pub unknown_b: u16,
     // Magic value `0x03ec`.
     #[br(magic = 0x03ecu16)]
@@ -487,7 +487,7 @@ pub struct IndexPageContent {
     /// Number of index entries in this page.
     #[br(temp)]
     num_entries: u16,
-    /// Points to the first empty index entry, or `1fff` if none.
+    /// Points to the first empty index entry, or `0x1fff` if none.
     ///
     /// In real databases, this has been found to be one of three things:
     /// 1. The same value as `num_entries`.
@@ -644,9 +644,11 @@ pub struct Page {
     /// past the end of the file.
     pub next_page: PageIndex,
     /// Unknown field.
+    /// Appears to be a number between 1 and ~2500.
     #[allow(dead_code)]
     unknown1: u32,
     /// Unknown field.
+    /// Appears to always be zero.
     #[allow(dead_code)]
     unknown2: u32,
     /// Number of rows in this table (8-bit version).
@@ -655,12 +657,14 @@ pub struct Page {
     /// that the number of rows fits into a single byte.
     pub num_rows_small: u8,
     /// Unknown field.
+    /// Appears to be a multiple of 0x20; often zero.
     ///
     /// According to [@flesniak](https://github.com/flesniak):
     /// > a bitmask (first track: 32)
     #[allow(dead_code)]
     unknown3: u8,
     /// Unknown field.
+    /// Appears to be between 0 and ~16; often zero.
     ///
     /// According to [@flesniak](https://github.com/flesniak):
     /// > often 0, sometimes larger, esp. for pages with high real_entry_count (e.g. 12 for 101 entries)
@@ -687,6 +691,7 @@ pub struct Page {
 #[br(little, import { page_start_pos: u64, page_size: u32, num_rows_small: u8, page_type: PageType })]
 pub struct DataPageContent {
     /// Unknown field.
+    /// Often 1 or 0x1fff; also observed: 8, 27, 22, 17, 2.
     ///
     /// According to [@flesniak](https://github.com/flesniak):
     /// > (0->1: 2)
@@ -697,13 +702,14 @@ pub struct DataPageContent {
     /// Used when the number of rows does not fit into a single byte. In that case,`num_rows_large`
     /// is greater than `num_rows_small`, but is not equal to `0x1FFF`.
     pub num_rows_large: u16,
-    /// Unknown field.
+    /// Unknown field (usually zero).
     #[allow(dead_code)]
     unknown6: u16,
-    /// Unknown field.
+    /// Unknown field (usually zero).
     ///
     /// According to [@flesniak](https://github.com/flesniak):
     /// > always 0, except 1 for history pages, num entries for strange pages?"
+    /// @RobinMcCorkell: I don't think this is correct, my DB only has zeros for all pages.
     #[allow(dead_code)]
     unknown7: u16,
     /// Number of rows in this page.
@@ -751,11 +757,11 @@ impl BinWrite for DataPageContent {
             (page_size - Page::HEADER_SIZE - DataPageContent::HEADER_SIZE).into(),
         ))?;
 
-        for row_group in &self.row_groups {
+        for (i, row_group) in self.row_groups.iter().enumerate() {
             relative_row_offset = row_group.write_options_and_get_row_offset(
                 writer,
                 endian,
-                (header_end_pos, relative_row_offset),
+                (i, header_end_pos, relative_row_offset),
             )?;
         }
         Ok(())
@@ -801,9 +807,13 @@ pub struct RowGroup {
     #[allow(dead_code)]
     row_offsets: [u16; Self::MAX_ROW_COUNT],
     row_presence_flags: u16,
-    /// Unknown field, probably padding.
+    /// Unknown field.
+    /// Often zero, sometimes a multiple of 2, rarely something else.
+    /// When a multiple of 2, the set bit often aligns with the last present row
+    /// in the group, so maybe this is a bitset like the flags.
     ///
-    /// Apparently this is not always zero, so it might also be something different.
+    /// E.g. for a full Artist rowgroup, this is usually zero.
+    /// For the last Artist rowgroup in the page with flags 0x003f, this is often 0x0020.
     unknown: u16,
     // build rows from offsets collected above
     #[br(seek_before=SeekFrom::Start(page_heap_position))]
@@ -861,20 +871,8 @@ impl RowGroup {
         &self,
         writer: &mut W,
         endian: Endian,
-        args: (u64, u64),
+        (group_index, heap_start, relative_row_offset): (usize, u64, u64),
     ) -> binrw::BinResult<u64> {
-        let (heap_start, relative_row_offset) = args;
-
-        let rows_to_write_count = self.present_rows().len();
-
-        // The number of flags set should match the number of present rows.
-        if rows_to_write_count != self.row_presence_flags.count_ones() as usize {
-            return Err(binrw::Error::AssertFail {
-                pos: heap_start,
-                message: "Mismatch between present row count and row_presence_flags".to_string(),
-            });
-        }
-
         let rowgroup_start = writer.stream_position()? - u64::from(Self::BINARY_SIZE);
 
         let free_space_start = heap_start + relative_row_offset;
@@ -887,7 +885,7 @@ impl RowGroup {
             let row_position = writer.stream_position()?;
             let aligned_position = row.align_by(row_position);
             writer.seek(SeekFrom::Start(aligned_position))?;
-            row.write_options(writer, endian, ())?;
+            row.write_options(writer, endian, (Self::MAX_ROW_COUNT * group_index + i,))?;
 
             let large_offset = aligned_position.checked_sub(heap_start).ok_or_else(|| {
                 binrw::Error::AssertFail {
@@ -1016,11 +1014,15 @@ pub struct TrailingName {
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[brw(little)]
+#[bw(import(row_index: usize))]
 pub struct Album {
     /// Unknown field, usually `80 00`.
     subtype: Subtype,
     /// Unknown field, called `index_shift` by [@flesniak](https://github.com/flesniak).
-    index_shift: u16,
+    /// Appears to always be 0x20 * row index.
+    #[br(temp)]
+    #[bw(calc = 0x20 * row_index as u16)]
+    _index_shift: u16,
     /// Unknown field.
     unknown2: u32,
     /// ID of the artist row associated with this row.
@@ -1040,11 +1042,15 @@ pub struct Album {
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[brw(little)]
+#[bw(import(row_index: usize))]
 pub struct Artist {
     /// Determines if the `name` string is located at the 8-bit offset (0x60) or the 16-bit offset (0x64).
     subtype: Subtype,
     /// Unknown field, called `index_shift` by [@flesniak](https://github.com/flesniak).
-    index_shift: u16,
+    /// Appears to always be 0x20 * row index.
+    #[br(temp)]
+    #[bw(calc = 0x20 * row_index as u16)]
+    _index_shift: u16,
     /// ID of this row.
     id: ArtistId,
     /// offsets at the row end
@@ -1239,17 +1245,18 @@ pub struct TrackStrings {
     #[br(parse_with = offsets.read_offset(1))]
     #[bw(write_with = offsets.write_offset(1))]
     isrc: DeviceSQLString,
-    /// Unknown string field.
+    /// Lyricist of the track.
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(2))]
     #[bw(write_with = offsets.write_offset(2))]
-    unknown_string1: DeviceSQLString,
-    /// Unknown string field.
+    lyricist: DeviceSQLString,
+    /// Unknown string field containing a number.
+    /// Appears to increment when the track is exported or modified in Rekordbox.
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(3))]
     #[bw(write_with = offsets.write_offset(3))]
     unknown_string2: DeviceSQLString,
-    /// Unknown string field.
+    /// Unknown string field containing a number.
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(4))]
     #[bw(write_with = offsets.write_offset(4))]
@@ -1259,22 +1266,23 @@ pub struct TrackStrings {
     #[br(parse_with = offsets.read_offset(5))]
     #[bw(write_with = offsets.write_offset(5))]
     unknown_string4: DeviceSQLString,
-    /// Unknown string field (named by [@flesniak](https://github.com/flesniak)).
+    /// Track "message", a field in the Rekordbox UI.
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(6))]
     #[bw(write_with = offsets.write_offset(6))]
     message: DeviceSQLString,
-    /// Probably describes whether the track is public on kuvo.com (?). Value is either "ON" or empty string.
+    /// "Publish track information" in Rekordbox, value is either "ON" or empty string.
+    /// Appears related to the Stagehand product to control DJ equipment remotely.
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(7))]
     #[bw(write_with = offsets.write_offset(7))]
-    kuvo_public: DeviceSQLString,
+    publish_track_information: DeviceSQLString,
     /// Determines if hotcues should be autoloaded. Value is either "ON" or empty string.
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(8))]
     #[bw(write_with = offsets.write_offset(8))]
     autoload_hotcues: DeviceSQLString,
-    /// Unknown string field.
+    /// Unknown string field (usually empty).
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(9))]
     #[bw(write_with = offsets.write_offset(9))]
@@ -1284,12 +1292,12 @@ pub struct TrackStrings {
     #[br(parse_with = offsets.read_offset(10))]
     #[bw(write_with = offsets.write_offset(10))]
     unknown_string6: DeviceSQLString,
-    /// Date when the track was added to the Rekordbox collection.
+    /// Date when the track was added to the Rekordbox collection (YYYY-MM-DD).
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(11))]
     #[bw(write_with = offsets.write_offset(11))]
     date_added: DeviceSQLString,
-    /// Date when the track was released.
+    /// Date when the track was released (YYYY-MM-DD).
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(12))]
     #[bw(write_with = offsets.write_offset(12))]
@@ -1309,7 +1317,7 @@ pub struct TrackStrings {
     #[br(parse_with = offsets.read_offset(15))]
     #[bw(write_with = offsets.write_offset(15))]
     analyze_path: DeviceSQLString,
-    /// Date when the track analysis was performed.
+    /// Date when the track analysis was performed (YYYY-MM-DD).
     #[brw(args(base, ()))]
     #[br(parse_with = offsets.read_offset(16))]
     #[bw(write_with = offsets.write_offset(16))]
@@ -1345,12 +1353,17 @@ pub struct TrackStrings {
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[brw(little)]
+#[bw(import (row_index: usize))]
 pub struct Track {
     /// Unknown field, usually `24 00`.
     subtype: Subtype,
     /// Unknown field, called `index_shift` by [@flesniak](https://github.com/flesniak).
-    index_shift: u16,
+    /// Appears to always be 0x20 * row index.
+    #[br(temp)]
+    #[bw(calc = 0x20 * row_index as u16)]
+    _index_shift: u16,
     /// Unknown field, called `bitmask` by [@flesniak](https://github.com/flesniak).
+    /// Appears to always be 0x000c0700.
     bitmask: u32,
     /// Sample Rate in Hz.
     sample_rate: u32,
@@ -1358,11 +1371,13 @@ pub struct Track {
     composer_id: ArtistId,
     /// File size in bytes.
     file_size: u32,
-    /// Unknown field (maybe another ID?)
+    /// Unknown field; observed values are effectively random.
     unknown2: u32,
-    /// Unknown field ("always 19048?" according to [@flesniak](https://github.com/flesniak))
+    /// Unknown field; observed values: 19048, 64128, 31844.
+    /// Appears to be the same for all tracks in a given DB.
     unknown3: u16,
-    /// Unknown field ("always 30967?" according to [@flesniak](https://github.com/flesniak))
+    /// Unknown field; observed values: 30967, 1511, 9043.
+    /// Appears to be the same for all tracks in a given DB.
     unknown4: u16,
     /// Artwork row ID for the cover art (non-zero if set),
     artwork_id: ArtworkId,
@@ -1398,7 +1413,7 @@ pub struct Track {
     sample_depth: u16,
     /// Playback duration of this track in seconds (at normal speed).
     duration: u16,
-    /// Unknown field, apparently always "29".
+    /// Unknown field, apparently always "0x29".
     unknown5: u16,
     /// Color row ID for this track (non-zero if set).
     color: ColorIndex,
@@ -1430,6 +1445,7 @@ pub struct Track {
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[brw(little)]
 #[br(import(page_type: PlainPageType))]
+#[bw(import (row_index: usize))]
 // The large enum size is unfortunate, but since users of this library will probably use iterators
 // to consume the results on demand, we can live with this. The alternative of using a `Box` would
 // require a heap allocation per row, which is arguably worse. Hence, the warning is disabled for
@@ -1438,10 +1454,10 @@ pub struct Track {
 pub enum PlainRow {
     /// Contains the album name, along with an ID of the corresponding artist.
     #[br(pre_assert(page_type == PlainPageType::Albums))]
-    Album(Album),
+    Album(#[bw(args(row_index))] Album),
     /// Contains the artist name and ID.
     #[br(pre_assert(page_type == PlainPageType::Artists))]
-    Artist(Artist),
+    Artist(#[bw(args(row_index))] Artist),
     /// Contains the artwork path and ID.
     #[br(pre_assert(page_type == PlainPageType::Artwork))]
     Artwork(Artwork),
@@ -1474,7 +1490,7 @@ pub enum PlainRow {
     ColumnEntry(ColumnEntry),
     /// Contains the album name, along with an ID of the corresponding artist.
     #[br(pre_assert(page_type == PlainPageType::Tracks))]
-    Track(Track),
+    Track(#[bw(args(row_index))] Track),
 }
 
 impl PlainRow {
@@ -1508,6 +1524,7 @@ impl PlainRow {
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[brw(little)]
 #[br(import(page_type: PageType))]
+#[bw(import(row_index: usize))]
 // The large enum size is unfortunate, but since users of this library will probably use iterators
 // to consume the results on demand, we can live with this. The alternative of using a `Box` would
 // require a heap allocation per row, which is arguably worse. Hence, the warning is disabled for
@@ -1522,6 +1539,7 @@ pub enum Row {
             PageType::Plain(v) => v,
             _ => unreachable!("by above pre_assert")
         }))]
+        #[bw(args(row_index))]
         PlainRow,
     ),
     #[br(pre_assert(matches!(page_type, PageType::Ext(_))))]
