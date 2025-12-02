@@ -34,7 +34,7 @@ fn assert_pdb_row_count(page_type: PlainPageType, expected_row_count: usize) {
                     data_content
                         .row_groups
                         .iter()
-                        .map(|row_group| row_group.present_rows().len())
+                        .map(|row_group| row_group.len())
                         .sum::<usize>()
                 })
         })

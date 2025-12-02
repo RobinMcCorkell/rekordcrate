@@ -100,7 +100,7 @@ fn list_playlists(path: &PathBuf) -> rekordcrate::Result<()> {
         let page = db.load_page(page_id).expect("failed to load page");
         if let Some(data_content) = page.content.as_data() {
             for row_group in data_content.row_groups.iter() {
-                for row in row_group.present_rows() {
+                for row in row_group {
                     if let Row::Plain(PlainRow::PlaylistTreeNode(playlist_tree)) = row {
                         tree.entry(playlist_tree.parent_id)
                             .or_default()
@@ -142,7 +142,7 @@ fn dump_pdb(path: &PathBuf, typ: DatabaseType) -> rekordcrate::Result<()> {
                 PageContent::Data(data_content) => {
                     data_content.row_groups.iter().for_each(|row_group| {
                         println!("    {:?}", row_group);
-                        for row in row_group.present_rows() {
+                        for row in row_group {
                             println!("      {:?}", row);
                         }
                     })
