@@ -263,6 +263,15 @@ impl<const N: usize> From<[u64; N]> for SeekArray<N> {
     }
 }
 
+impl<const N: usize> IntoIterator for SeekArray<N> {
+    type Item = u64;
+    type IntoIter = std::array::IntoIter<u64, N>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.map(Cell::into_inner).into_iter()
+    }
+}
+
 /// The implementation of the offset array, which can be either u8 or u16.
 /// This is a private implementation detail, use `OffsetArrayContainer` instead.
 /// This enum is used to read/write the offsets, and can be converted into a

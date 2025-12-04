@@ -95,79 +95,6 @@ pub enum FileType {
     Other(u16),
 }
 
-/// align given value to the alignment requirements by the given type.
-#[must_use]
-pub const fn align_by(alignment: u64, mut offset: u64) -> u64 {
-    // This is technically dependent on the compile time ABI
-    // but for x86 (which this is likely compiled on), we should be able
-    // to assume that
-    // the alignment of a type is just the size of its largest
-    // member. That likely matches the assumptions made for the 32-bit
-    // MCU (Renesas R8A77240D500BG) built into the different CDJ-2000 variants.
-    // In either way, its better to overshoot the alignment
-    // than to undershoot it. For CDJ-3000s, this assumption
-    // is likely also correct since they use a 64-bit ARM CPU (Renesas R8A774C0HA01BG)
-    if !offset.is_multiple_of(alignment) {
-        offset += alignment - (offset % alignment);
-    }
-    offset
-}
-
-#[binrw(little)]
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-#[br(import(limit: usize))]
-/// Represents explicit padding bytes in a binary structure.
-pub struct ExplicitPadding(
-    // use offset + a couple bytes as a limit (though this is rather a heuristic)
-    #[br(parse_with = Self::guess_padding, args(limit))]
-    #[bw(ignore)]
-    #[bw(pad_after=self.0)]
-    pub usize,
-);
-
-use binrw::{io::Read, BinResult};
-impl ExplicitPadding {
-    #[binrw::parser(reader)]
-    fn guess_padding(limit: usize) -> BinResult<usize> {
-        let before = reader.stream_position()?;
-        let mut count = 0;
-        // We never expect to read many bytes here, so this is fine
-        #[allow(clippy::unbuffered_bytes)]
-        for byte in reader.bytes() {
-            if byte? != 0 {
-                break;
-            }
-            // to avoid scanning an entire page after the last row,
-            // we limit here
-            // if the limit is reached, assume end of page and no padding
-            // used
-            if limit != 0 && count == limit {
-                count = 0;
-                break;
-            }
-            count += 1;
-        }
-        if reader.stream_position()? != before {
-            // don't consume the non-zero byte we just read if we read anything at all
-            reader.seek_relative(-1)?;
-        }
-        Ok(count)
-    }
-}
-
-impl binrw::meta::ReadEndian for ExplicitPadding {
-    const ENDIAN: binrw::meta::EndianKind = binrw::meta::EndianKind::None;
-}
-impl binrw::meta::WriteEndian for ExplicitPadding {
-    const ENDIAN: binrw::meta::EndianKind = binrw::meta::EndianKind::None;
-}
-
-impl From<usize> for ExplicitPadding {
-    fn from(value: usize) -> Self {
-        Self(value)
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod testing {
     use binrw::{
@@ -226,6 +153,23 @@ pub(crate) mod testing {
         assert_eq_hex!(&writer.get_ref(), &bin);
     }
 
+    pub fn test_write_then_read_with_args<'a, T>(
+        obj: &T,
+        read_args: <T as binrw::BinRead>::Args<'a>,
+        write_args: <T as binrw::BinWrite>::Args<'a>,
+    ) where
+        <T as binrw::BinRead>::Args<'a>: Clone,
+        <T as binrw::BinWrite>::Args<'a>: Clone,
+        T: BinRead + BinWrite + PartialEq + core::fmt::Debug + ReadEndian + WriteEndian,
+    {
+        let endian = Endian::NATIVE;
+        let mut bin = Vec::new();
+        let mut writer = binrw::io::Cursor::new(&mut bin);
+        obj.write_options(&mut writer, endian, write_args.clone())
+            .unwrap();
+        test_read_with_args(&bin, obj, read_args);
+    }
+
     pub fn test_roundtrip<'a, T>(bin: &[u8], obj: T)
     where
         <T as binrw::BinRead>::Args<'a>: Default + Clone,
@@ -238,52 +182,5 @@ pub(crate) mod testing {
             <T as binrw::BinRead>::Args::default(),
             <T as binrw::BinWrite>::Args::default(),
         );
-    }
-}
-
-#[cfg(test)]
-mod test {
-    use super::*;
-    use crate::util::testing::{test_roundtrip, test_roundtrip_with_args};
-    mod explicit_padding {
-        use super::*;
-
-        #[test]
-        fn empty() {
-            test_roundtrip(&[], ExplicitPadding::default());
-            test_roundtrip(&[], ExplicitPadding(0));
-            test_roundtrip_with_args(&[], ExplicitPadding(0), (0,), ());
-        }
-        #[test]
-        fn limit() {
-            test_roundtrip_with_args(&[0x00], ExplicitPadding(1), (1,), ());
-        }
-
-        #[binrw(little)]
-        #[brw(little)]
-        #[derive(Debug, PartialEq, Clone)]
-        #[br(import(limit: usize))]
-        struct Something(u8, #[br(args(limit))] ExplicitPadding);
-        #[test]
-        fn non_empty() {
-            test_roundtrip(&[0x00, 0x00], ExplicitPadding(2));
-
-            let smth = Something(1, ExplicitPadding(2));
-            test_roundtrip_with_args(&[0x01, 0x00, 0x00], smth, (0,), ());
-        }
-        #[test]
-        fn multiple() {
-            use binrw::VecArgs;
-            let multiple = vec![Something(1, ExplicitPadding(1)); 2];
-            test_roundtrip_with_args(
-                &[0x01, 0x00, 0x01, 0x00],
-                multiple,
-                VecArgs {
-                    count: 2,
-                    inner: (0,),
-                },
-                (),
-            );
-        }
     }
 }
