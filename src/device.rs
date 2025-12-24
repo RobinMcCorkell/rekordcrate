@@ -10,7 +10,7 @@
 
 use crate::{
     pdb::{
-        DatabaseType, Header, Page, PageContent, PageType, PlainPageType, PlainRow,
+        io::PdbFile, DatabaseType, Header, Page, PageContent, PageType, PlainPageType, PlainRow,
         PlaylistTreeNode, PlaylistTreeNodeId, Row, Track, TrackId,
     },
     setting,
@@ -19,6 +19,7 @@ use crate::{
 use binrw::BinRead;
 use std::collections::HashMap;
 use std::fmt;
+use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
 
 /// Represents a Rekordbox device export.
@@ -83,7 +84,8 @@ impl DeviceExport {
     }
 
     fn read_pdb_file(path: &PathBuf) -> crate::Result<Pdb> {
-        todo!()
+        let mut reader = std::fs::File::open(path)?;
+        Pdb::load(&mut reader, DatabaseType::Plain)
     }
 
     /// Load PDB file.
@@ -575,9 +577,30 @@ pub struct Playlist {
 }
 
 impl Pdb {
+    /// Load a `Pdb` from a reader by eagerly loading all pages.
+    ///
+    /// This uses [`PdbFile`] internally to read the database, then
+    /// loads all pages into memory for convenient access.
+    pub fn load<R: Read + Seek>(reader: &mut R, db_type: DatabaseType) -> crate::Result<Self> {
+        let mut pdb_file = PdbFile::open_non_persistent(reader, db_type)?;
+        let header = pdb_file.get_header().clone();
+
+        // Eagerly load all pages for all tables
+        let mut pages = Vec::new();
+        for table in &header.tables {
+            let mut page_iter = pdb_file.load_pages(table.page_type)?;
+            while let Some(page) = page_iter.load_next()? {
+                pages.push(page.clone());
+            }
+        }
+
+        Ok(Pdb { header, pages })
+    }
+
     /// Create a new `Pdb` object by reading the PDB file at the given path.
     pub fn open_from_path(path: &PathBuf) -> crate::Result<Self> {
-        todo!()
+        let mut reader = std::fs::File::open(path)?;
+        Self::load(&mut reader, DatabaseType::Plain)
     }
 
     fn get_rows_by_page_type(&self, page_type: PlainPageType) -> impl Iterator<Item = &Row> + '_ {

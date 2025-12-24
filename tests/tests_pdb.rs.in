@@ -4,14 +4,14 @@ fn pdb_{name}() {{
     println!("Parsing file: {filepath}");
     let data = include_bytes!("{filepath}").as_slice();
     let mut reader = Cursor::new(data);
-    let mut db = Database::open_non_persistent(&mut reader, DatabaseType::Plain).expect("failed to open database");
-    println!("{{:#?}}", db.get_header());
+    let mut pdb_file = PdbFile::open_non_persistent(&mut reader, DatabaseType::Plain).expect("failed to open database");
+    println!("{{:#?}}", pdb_file.get_header());
 
-    let tables = db.get_header().tables.clone();
+    let tables = pdb_file.get_header().tables.clone();
     for (i, table) in tables.iter().enumerate() {{
         let id = TableIndex::from(i);
         println!("Table {{:?}}: {{:?}}", id, table.page_type);
-        let mut page_iter = db.load_pages_for_table(id).expect("failed to read pages");
+        let mut page_iter = pdb_file.load_pages_for_table(id).expect("failed to read pages");
 
         while let Some(page) = page_iter.load_next().expect("failed to load page") {{
             println!("  {{:?}}", page);

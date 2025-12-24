@@ -8,7 +8,7 @@
 
 use binrw::BinRead;
 use clap::{Parser, Subcommand};
-use rekordcrate::pdb::io::Database;
+use rekordcrate::pdb::io::PdbFile;
 use rekordcrate::pdb::*;
 use rekordcrate::setting::Setting;
 use rekordcrate::xml::Document;
@@ -65,14 +65,14 @@ fn list_playlists(path: &PathBuf) -> rekordcrate::Result<()> {
     use std::collections::{BTreeMap, HashMap};
 
     let mut reader = std::fs::File::open(path)?;
-    let mut db = Database::open_non_persistent(&mut reader, DatabaseType::Plain)?;
+    let mut pdb_file = PdbFile::open_non_persistent(&mut reader, DatabaseType::Plain)?;
 
     let mut playlist_tree: HashMap<PlaylistTreeNodeId, Vec<PlaylistTreeNode>> = HashMap::new();
     let mut playlist_entries: HashMap<PlaylistTreeNodeId, BTreeMap<u32, TrackId>> = HashMap::new();
     let mut artists: HashMap<ArtistId, Artist> = HashMap::new();
     let mut tracks: HashMap<TrackId, Track> = HashMap::new();
 
-    let mut page_iter = db.load_pages(PageType::Plain(PlainPageType::PlaylistTree))?;
+    let mut page_iter = pdb_file.load_pages(PageType::Plain(PlainPageType::PlaylistTree))?;
     while let Some(page) = page_iter.load_next()? {
         if let Some(dpc) = page.content.as_data() {
             for row in dpc.rows.values() {
@@ -88,7 +88,7 @@ fn list_playlists(path: &PathBuf) -> rekordcrate::Result<()> {
         }
     }
 
-    let mut page_iter = db.load_pages(PageType::Plain(PlainPageType::Artists))?;
+    let mut page_iter = pdb_file.load_pages(PageType::Plain(PlainPageType::Artists))?;
     while let Some(page) = page_iter.load_next()? {
         if let Some(dpc) = page.content.as_data() {
             for row in dpc.rows.values() {
@@ -101,7 +101,7 @@ fn list_playlists(path: &PathBuf) -> rekordcrate::Result<()> {
         }
     }
 
-    let mut page_iter = db.load_pages(PageType::Plain(PlainPageType::Tracks))?;
+    let mut page_iter = pdb_file.load_pages(PageType::Plain(PlainPageType::Tracks))?;
     while let Some(page) = page_iter.load_next()? {
         if let Some(dpc) = page.content.as_data() {
             for row in dpc.rows.values() {
@@ -114,7 +114,7 @@ fn list_playlists(path: &PathBuf) -> rekordcrate::Result<()> {
         }
     }
 
-    let mut page_iter = db.load_pages(PageType::Plain(PlainPageType::PlaylistEntries))?;
+    let mut page_iter = pdb_file.load_pages(PageType::Plain(PlainPageType::PlaylistEntries))?;
     while let Some(page) = page_iter.load_next()? {
         if let Some(dpc) = page.content.as_data() {
             for row in dpc.rows.values() {
@@ -205,15 +205,15 @@ fn dump_anlz(path: &PathBuf) -> rekordcrate::Result<()> {
 
 fn dump_pdb(path: &PathBuf, typ: DatabaseType) -> rekordcrate::Result<()> {
     let mut reader = std::fs::File::open(path)?;
-    let mut db = Database::open_non_persistent(&mut reader, typ)?;
+    let mut pdb_file = PdbFile::open_non_persistent(&mut reader, typ)?;
 
-    println!("{:#?}", db.get_header());
+    println!("{:#?}", pdb_file.get_header());
 
-    let tables = db.get_header().tables.clone();
+    let tables = pdb_file.get_header().tables.clone();
     for (i, table) in tables.iter().enumerate() {
         let id = TableIndex::from(i);
         println!("Table {:?}: {:?}", id, table.page_type);
-        let mut page_iter = db.load_pages_for_table(id)?;
+        let mut page_iter = pdb_file.load_pages_for_table(id)?;
         while let Some(page) = page_iter.load_next()? {
             match &page.content {
                 PageContent::Data(data_content) => {
