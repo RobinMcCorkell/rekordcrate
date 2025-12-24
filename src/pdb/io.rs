@@ -64,24 +64,24 @@ impl BinWrite for LazyPage {
     }
 }
 
-/// A PDB database opened for reading or writing.
-pub struct Database<'io, IO> {
+/// A PDB file opened for reading or writing.
+pub struct PdbFile<'io, IO> {
     io: &'io mut IO,
     db_type: DatabaseType,
     content: LazyDatabase,
 }
 
-impl<'io, IO> std::fmt::Debug for Database<'io, IO> {
+impl<'io, IO> std::fmt::Debug for PdbFile<'io, IO> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Database")
+        f.debug_struct("PdbFile")
             .field("db_type", &self.db_type)
             .field("header", &self.content.header)
             .finish()
     }
 }
 
-impl<'r, R: Read + Seek> Database<'r, R> {
-    /// Opens a PDB database without writing back to disk.
+impl<'r, R: Read + Seek> PdbFile<'r, R> {
+    /// Opens a PDB file without writing back to disk.
     /// Still allows modifying data in memory.
     pub fn open_non_persistent(io: &'r mut R, db_type: DatabaseType) -> RekordcrateResult<Self> {
         let endian = Endian::Little;
@@ -119,10 +119,10 @@ impl<'r, R: Read + Seek> Database<'r, R> {
     }
 
     /// Loads all pages for a table into memory.
-    pub fn load_pages_for_table<'db>(
-        &'db mut self,
+    pub fn load_pages_for_table<'pdb>(
+        &'pdb mut self,
         table_index: TableIndex,
-    ) -> RekordcrateResult<PageIterator<'db, 'r, R>> {
+    ) -> RekordcrateResult<PageIterator<'pdb, 'r, R>> {
         let table = self
             .get_header()
             .tables
@@ -131,17 +131,17 @@ impl<'r, R: Read + Seek> Database<'r, R> {
         let (first, last) = (table.first_page, table.last_page);
 
         Ok(PageIterator {
-            db: self,
+            pdb_file: self,
             next: Some(first),
             last,
         })
     }
 
     /// Loads all pages for a page type into memory.
-    pub fn load_pages<'db>(
-        &'db mut self,
+    pub fn load_pages<'pdb>(
+        &'pdb mut self,
         page_type: PageType,
-    ) -> RekordcrateResult<PageIterator<'db, 'r, R>> {
+    ) -> RekordcrateResult<PageIterator<'pdb, 'r, R>> {
         let (_, table) = self
             .get_header()
             .find_table(page_type)
@@ -149,7 +149,7 @@ impl<'r, R: Read + Seek> Database<'r, R> {
         let (first, last) = (table.first_page, table.last_page);
 
         Ok(PageIterator {
-            db: self,
+            pdb_file: self,
             next: Some(first),
             last,
         })
@@ -168,18 +168,18 @@ impl<'r, R: Read + Seek> Database<'r, R> {
     }
 }
 
-/// An "iterator" over pages in a PDB database.
+/// An "iterator" over pages in a PDB file.
 ///
 /// This isn't actually an `Iterator` because we cannot
 /// lend items with the current Rust `Iterator` trait.
 #[derive(Debug)]
-pub struct PageIterator<'db, 'io, IO> {
-    db: &'db mut Database<'io, IO>,
+pub struct PageIterator<'pdb, 'io, IO> {
+    pdb_file: &'pdb mut PdbFile<'io, IO>,
     next: Option<PageIndex>,
     last: PageIndex,
 }
 
-impl<'db, 'io, IO> PageIterator<'db, 'io, IO>
+impl<'pdb, 'io, IO> PageIterator<'pdb, 'io, IO>
 where
     IO: Read + Seek,
 {
@@ -191,7 +191,7 @@ where
         match self.next {
             None => Ok(None),
             Some(page_index) => {
-                let page = self.db.load_page(page_index)?;
+                let page = self.pdb_file.load_page(page_index)?;
                 if page_index == self.last {
                     self.next = None;
                 } else {
@@ -209,7 +209,7 @@ where
     pub fn map<F, T>(
         mut self,
         mut f: F,
-    ) -> impl Iterator<Item = RekordcrateResult<T>> + use<'db, 'io, IO, F, T>
+    ) -> impl Iterator<Item = RekordcrateResult<T>> + use<'pdb, 'io, IO, F, T>
     where
         F: FnMut(&mut Page) -> T,
     {
@@ -227,7 +227,7 @@ where
     pub fn filter_map<F, T>(
         self,
         f: F,
-    ) -> impl Iterator<Item = RekordcrateResult<T>> + use<'db, 'io, IO, F, T>
+    ) -> impl Iterator<Item = RekordcrateResult<T>> + use<'pdb, 'io, IO, F, T>
     where
         F: FnMut(&mut Page) -> Option<T>,
     {

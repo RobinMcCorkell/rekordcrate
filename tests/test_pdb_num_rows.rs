@@ -6,17 +6,17 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
-use rekordcrate::pdb::io::Database;
+use rekordcrate::pdb::io::PdbFile;
 use rekordcrate::pdb::{DatabaseType, PageType, PlainPageType};
 use std::io::Cursor;
 
 fn assert_pdb_row_count(page_type: PlainPageType, expected_row_count: usize) {
     let data = include_bytes!("../data/pdb/num_rows/export.pdb").as_slice();
     let mut reader = Cursor::new(data);
-    let mut db = Database::open_non_persistent(&mut reader, DatabaseType::Plain)
+    let mut pdb_file = PdbFile::open_non_persistent(&mut reader, DatabaseType::Plain)
         .expect("Failed to open database");
 
-    let page_iter = db
+    let page_iter = pdb_file
         .load_pages(PageType::Plain(page_type))
         .expect("Failed to load pages for page type");
 
