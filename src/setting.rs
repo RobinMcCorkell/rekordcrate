@@ -331,8 +331,7 @@ pub struct DJMMySetting {
     pub indicator_brightness: MixerIndicatorBrightness,
     /// "CH FADER CURVE (LONG FADER)" setting.
     pub channel_fader_curve_long_fader: ChannelFaderCurveLongFader,
-    /// Unknown field (apparently always 0).
-    #[br(assert(unknown2 == [0; 27]))]
+    /// Unknown fields.
     unknown2: [u8; 27],
 }
 
