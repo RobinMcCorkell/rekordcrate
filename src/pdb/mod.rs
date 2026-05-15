@@ -19,6 +19,7 @@
 //! - <https://github.com/flesniak/python-prodj-link/tree/master/prodj/pdblib>
 
 pub mod bitfields;
+pub mod defaults;
 pub mod ext;
 pub mod io;
 pub mod offset_array;
@@ -39,7 +40,9 @@ use std::fmt;
 use crate::pdb::ext::{ExtPageType, ExtRow};
 use crate::pdb::offset_array::OffsetSize;
 use crate::pdb::string::DeviceSQLString;
-use crate::util::{parse_at_offsets, write_at_offsets, ColorIndex, FileType, TableIndex};
+use crate::util::{
+    parse_at_offsets, write_at_offsets, ColorIndex, FileType, MaybeCalculated, TableIndex,
+};
 use binrw::{binrw, BinRead, BinResult, BinWrite, Endian};
 use std::io::{Read, Seek, SeekFrom, Write};
 use thiserror::Error;
@@ -688,9 +691,7 @@ impl DataPageContent {
     }
 }
 
-// Usage of PageHeapObject is coming in a future PR.
-#[allow(dead_code)]
-trait PageHeapObject {
+pub(crate) trait PageHeapObject {
     type Args<'a>;
 
     /// Required page heap space in bytes to store the object.
@@ -1014,14 +1015,14 @@ pub struct Album {
     /// Unknown field.
     unknown2: u32,
     /// ID of the artist row associated with this row.
-    artist_id: ArtistId,
+    pub artist_id: ArtistId,
     /// ID of this row.
-    id: AlbumId,
+    pub id: AlbumId,
     /// Unknown field.
     unknown3: u32,
     /// The offsets and its data and the end of this row
     #[brw(args(20, subtype.get_offset_size(), ()))]
-    offsets: OffsetArrayContainer<TrailingName, 1>,
+    pub offsets: OffsetArrayContainer<TrailingName, 1>,
 }
 
 impl RowVariant for Album {
@@ -1056,6 +1057,24 @@ impl PageHeapObject for Album {
         ]
         .iter()
         .sum()
+    }
+}
+
+impl Album {
+    /// Create a new album row with the given name and optional album artist.
+    pub fn new(name: DeviceSQLString, artist_id: ArtistId) -> Self {
+        Self {
+            subtype: Subtype(0x60),
+            index_shift: 0,
+            unknown2: 0,
+            artist_id,
+            id: AlbumId(0),
+            unknown3: 0,
+            offsets: OffsetArrayContainer {
+                offsets: MaybeCalculated::Calculated,
+                inner: TrailingName { name },
+            },
+        }
     }
 }
 
@@ -1105,6 +1124,21 @@ impl PageHeapObject for Artist {
         ]
         .iter()
         .sum()
+    }
+}
+
+impl Artist {
+    /// Create a new artist row with the given name.
+    pub fn new(name: DeviceSQLString) -> Self {
+        Self {
+            subtype: Subtype(0x60),
+            index_shift: 0,
+            id: ArtistId(0),
+            offsets: OffsetArrayContainer {
+                offsets: MaybeCalculated::Calculated,
+                inner: TrailingName { name },
+            },
+        }
     }
 }
 
@@ -1197,15 +1231,28 @@ impl PageHeapObject for Color {
     }
 }
 
+impl Color {
+    /// Create a new color row with the given color index and name.
+    pub fn new(color: ColorIndex, name: DeviceSQLString) -> Self {
+        Self {
+            unknown1: 0,
+            unknown2: 0,
+            color,
+            unknown3: 0,
+            name,
+        }
+    }
+}
+
 /// Represents a musical genre.
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[brw(little)]
 pub struct Genre {
     /// ID of this row.
-    id: GenreId,
+    pub id: GenreId,
     /// Name of the genre.
-    name: DeviceSQLString,
+    pub name: DeviceSQLString,
 }
 
 impl RowVariant for Genre {
@@ -1234,6 +1281,16 @@ impl PageHeapObject for Genre {
         ]
         .iter()
         .sum()
+    }
+}
+
+impl Genre {
+    /// Create a new genre row with the given name.
+    pub fn new(name: DeviceSQLString) -> Self {
+        Self {
+            id: GenreId(0),
+            name,
+        }
     }
 }
 
@@ -1375,10 +1432,30 @@ impl RowVariant for History {
             _ => None,
         }
     }
+
     fn from_row_mut(row: &mut Row) -> Option<&mut Self> {
         match row {
             Row::Plain(PlainRow::History(row)) => Some(row),
             _ => None,
+        }
+    }
+}
+
+impl History {
+    /// Create a new history sync row.
+    pub fn new(
+        num_tracks: u32,
+        date: DeviceSQLString,
+        version: DeviceSQLString,
+        label: DeviceSQLString,
+    ) -> Self {
+        Self {
+            subtype: Subtype(0x0280),
+            index_shift: 0,
+            num_tracks,
+            date,
+            version,
+            label,
         }
     }
 }
@@ -1389,11 +1466,11 @@ impl RowVariant for History {
 #[brw(little)]
 pub struct Key {
     /// ID of this row.
-    id: KeyId,
+    pub id: KeyId,
     /// Apparently a second copy of the row ID.
-    id2: u32,
+    pub id2: u32,
     /// Name of the key.
-    name: DeviceSQLString,
+    pub name: DeviceSQLString,
 }
 
 impl RowVariant for Key {
@@ -1423,6 +1500,17 @@ impl PageHeapObject for Key {
         ]
         .iter()
         .sum()
+    }
+}
+
+impl Key {
+    /// Create a new key row with the given ID and name.
+    pub fn new(id: KeyId, name: DeviceSQLString) -> Self {
+        Self {
+            id2: id.0,
+            id,
+            name,
+        }
     }
 }
 
@@ -1508,6 +1596,24 @@ impl PlaylistTreeNode {
     pub fn is_folder(&self) -> bool {
         self.node_is_folder > 0
     }
+
+    /// Create a new playlist tree node.
+    pub fn new(
+        parent_id: PlaylistTreeNodeId,
+        sort_order: u32,
+        id: PlaylistTreeNodeId,
+        is_folder: bool,
+        name: DeviceSQLString,
+    ) -> Self {
+        Self {
+            parent_id,
+            unknown: 0,
+            sort_order,
+            id,
+            node_is_folder: u32::from(is_folder),
+            name,
+        }
+    }
 }
 
 impl PageHeapObject for PlaylistTreeNode {
@@ -1569,6 +1675,17 @@ impl PageHeapObject for PlaylistEntry {
     }
 }
 
+impl PlaylistEntry {
+    /// Create a new playlist entry row.
+    pub fn new(entry_index: u32, track_id: TrackId, playlist_id: PlaylistTreeNodeId) -> Self {
+        Self {
+            entry_index,
+            track_id,
+            playlist_id,
+        }
+    }
+}
+
 /// Contains the kinds of Metadata Categories tracks can be browsed by
 /// on CDJs.
 #[binrw]
@@ -1619,6 +1736,17 @@ impl PageHeapObject for ColumnEntry {
         ]
         .iter()
         .sum()
+    }
+}
+
+impl ColumnEntry {
+    /// Create a new column definition row.
+    pub fn new(id: u16, unknown0: u16, column_name: DeviceSQLString) -> Self {
+        Self {
+            id,
+            unknown0,
+            column_name,
+        }
     }
 }
 
@@ -1729,6 +1857,41 @@ impl OffsetArrayItems<21> for TrackStrings {
     }
 }
 
+impl TrackStrings {
+    /// Create a new `TrackStrings` with the given title, comment, filename, and file path.
+    /// All other string fields will be empty or defaulted.
+    pub fn new(
+        title: DeviceSQLString,
+        comment: DeviceSQLString,
+        filename: DeviceSQLString,
+        file_path: DeviceSQLString,
+    ) -> Self {
+        Self {
+            isrc: DeviceSQLString::new_isrc(String::new()).unwrap(),
+            lyricist: DeviceSQLString::empty(),
+            unknown_string2: DeviceSQLString::empty(),
+            unknown_string3: DeviceSQLString::empty(),
+            unknown_string4: DeviceSQLString::empty(),
+            message: DeviceSQLString::empty(),
+            publish_track_information: DeviceSQLString::empty(),
+            autoload_hotcues: DeviceSQLString::empty(),
+            unknown_string5: DeviceSQLString::empty(),
+            unknown_string6: DeviceSQLString::empty(),
+            date_added: DeviceSQLString::empty(),
+            release_date: DeviceSQLString::empty(),
+            mix_name: DeviceSQLString::empty(),
+            unknown_string7: DeviceSQLString::empty(),
+            analyze_path: DeviceSQLString::empty(),
+            analyze_date: DeviceSQLString::empty(),
+            comment,
+            title,
+            unknown_string8: DeviceSQLString::empty(),
+            filename,
+            file_path,
+        }
+    }
+}
+
 /// Contains the album name, along with an ID of the corresponding artist.
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1743,11 +1906,11 @@ pub struct Track {
     /// Appears to always be 0x000c0700.
     bitmask: u32,
     /// Sample Rate in Hz.
-    sample_rate: u32,
+    pub sample_rate: u32,
     /// Composer of this track as artist row ID (non-zero if set).
-    composer_id: ArtistId,
+    pub composer_id: ArtistId,
     /// File size in bytes.
-    file_size: u32,
+    pub file_size: u32,
     /// Unknown field; observed values are effectively random.
     unknown2: u32,
     /// Unknown field; observed values: 19048, 64128, 31844.
@@ -1757,47 +1920,47 @@ pub struct Track {
     /// Appears to be the same for all tracks in a given DB.
     unknown4: u16,
     /// Artwork row ID for the cover art (non-zero if set),
-    artwork_id: ArtworkId,
+    pub artwork_id: ArtworkId,
     /// Key row ID for the cover art (non-zero if set).
-    key_id: KeyId,
+    pub key_id: KeyId,
     /// Artist row ID of the original performer (non-zero if set).
-    orig_artist_id: ArtistId,
+    pub orig_artist_id: ArtistId,
     /// Label row ID of the original performer (non-zero if set).
-    label_id: LabelId,
+    pub label_id: LabelId,
     /// Artist row ID of the remixer (non-zero if set).
-    remixer_id: ArtistId,
+    pub remixer_id: ArtistId,
     /// Bitrate of the track.
-    bitrate: u32,
+    pub bitrate: u32,
     /// Track number of the track.
-    track_number: u32,
+    pub track_number: u32,
     /// Track tempo in centi-BPM (= 1/100 BPM).
-    tempo: u32,
+    pub tempo: u32,
     /// Genre row ID for this track (non-zero if set).
-    genre_id: GenreId,
+    pub genre_id: GenreId,
     /// Album row ID for this track (non-zero if set).
-    album_id: AlbumId,
+    pub album_id: AlbumId,
     /// Artist row ID for this track (non-zero if set).
     pub artist_id: ArtistId,
     /// Row ID of this track (non-zero if set).
     pub id: TrackId,
     /// Disc number of this track (non-zero if set).
-    disc_number: u16,
+    pub disc_number: u16,
     /// Number of times this track was played.
-    play_count: u16,
+    pub play_count: u16,
     /// Year this track was released.
-    year: u16,
+    pub year: u16,
     /// Bits per sample of the track aduio file.
-    sample_depth: u16,
+    pub sample_depth: u16,
     /// Playback duration of this track in seconds (at normal speed).
-    duration: u16,
+    pub duration: u16,
     /// Unknown field, apparently always "0x29".
     unknown5: u16,
     /// Color row ID for this track (non-zero if set).
-    color: ColorIndex,
+    pub color: ColorIndex,
     /// User rating of this track (0 to 5 starts).
     pub rating: u8,
     /// Format of the file.
-    file_type: FileType,
+    pub file_type: FileType,
     /// offsets (strings) at row end
     #[brw(args(0x5C, subtype.get_offset_size(), ()))]
     pub offsets: OffsetArrayContainer<TrackStrings, 21>,
@@ -1859,6 +2022,48 @@ impl PageHeapObject for Track {
         ]
         .iter()
         .sum()
+    }
+}
+
+impl Track {
+    /// Create a new track row with the given string fields.
+    pub fn new(strings: TrackStrings) -> Self {
+        Self {
+            subtype: Subtype(0x24),
+            index_shift: 0,
+            bitmask: 0x000c_0700,
+            sample_rate: 0,
+            composer_id: ArtistId(0),
+            file_size: 0,
+            unknown2: 0,
+            unknown3: 0,
+            unknown4: 0,
+            artwork_id: ArtworkId(0),
+            key_id: KeyId(0),
+            orig_artist_id: ArtistId(0),
+            label_id: LabelId(0),
+            remixer_id: ArtistId(0),
+            bitrate: 0,
+            track_number: 0,
+            tempo: 0,
+            genre_id: GenreId(0),
+            album_id: AlbumId(0),
+            artist_id: ArtistId(0),
+            id: TrackId(0),
+            disc_number: 0,
+            play_count: 0,
+            year: 0,
+            sample_depth: 0,
+            duration: 0,
+            unknown5: 0x29,
+            color: ColorIndex::None,
+            rating: 0,
+            file_type: FileType::Mp3,
+            offsets: OffsetArrayContainer {
+                offsets: MaybeCalculated::Calculated,
+                inner: strings,
+            },
+        }
     }
 }
 
@@ -1949,6 +2154,25 @@ impl RowVariant for Menu {
     }
 }
 
+impl Menu {
+    /// Create a new menu row.
+    pub fn new(
+        category_id: u16,
+        content_pointer: u16,
+        unknown: u8,
+        visibility: MenuVisibility,
+        sort_order: u16,
+    ) -> Self {
+        Self {
+            category_id,
+            content_pointer,
+            unknown,
+            visibility,
+            sort_order,
+        }
+    }
+}
+
 /// A table row contains the actual data.
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -1984,10 +2208,10 @@ pub enum PlainRow {
     HistoryPlaylist(HistoryPlaylist),
     /// Represents a history playlist.
     #[br(pre_assert(page_type == PlainPageType::HistoryEntries))]
-    HistoryEntry(HistoryEntry),
+    HistoryEntry(#[bw(align_after = 4)] HistoryEntry),
     /// Represents a history sync row.
     #[br(pre_assert(page_type == PlainPageType::History))]
-    History(History),
+    History(#[bw(align_after = 4)] History),
     /// Represents a musical key.
     #[br(pre_assert(page_type == PlainPageType::Keys))]
     Key(Key),
@@ -2034,6 +2258,29 @@ impl PageHeapObject for PlainRow {
             PlainRow::ColumnEntry(column_entry) => column_entry.heap_bytes_required(()),
             PlainRow::Menu(menu) => menu.heap_bytes_required(()),
             PlainRow::Track(track) => track.heap_bytes_required(()),
+        }
+    }
+}
+
+impl PlainRow {
+    /// Returns the [`PlainPageType`] that this row belongs to.
+    pub(crate) fn page_type(&self) -> PlainPageType {
+        match self {
+            PlainRow::Album(_) => PlainPageType::Albums,
+            PlainRow::Artist(_) => PlainPageType::Artists,
+            PlainRow::Artwork(_) => PlainPageType::Artwork,
+            PlainRow::Color(_) => PlainPageType::Colors,
+            PlainRow::Genre(_) => PlainPageType::Genres,
+            PlainRow::HistoryPlaylist(_) => PlainPageType::HistoryPlaylists,
+            PlainRow::HistoryEntry(_) => PlainPageType::HistoryEntries,
+            PlainRow::History(_) => PlainPageType::History,
+            PlainRow::Key(_) => PlainPageType::Keys,
+            PlainRow::Label(_) => PlainPageType::Labels,
+            PlainRow::PlaylistTreeNode(_) => PlainPageType::PlaylistTree,
+            PlainRow::PlaylistEntry(_) => PlainPageType::PlaylistEntries,
+            PlainRow::ColumnEntry(_) => PlainPageType::Columns,
+            PlainRow::Menu(_) => PlainPageType::Menu,
+            PlainRow::Track(_) => PlainPageType::Tracks,
         }
     }
 }
@@ -2087,6 +2334,15 @@ impl Row {
     #[must_use]
     pub fn as_variant_mut<T: RowVariant>(&mut self) -> Option<&mut T> {
         T::from_row_mut(self)
+    }
+    /// Returns the [`PageType`] that this row belongs to.
+    #[must_use]
+    pub fn page_type(&self) -> PageType {
+        match self {
+            Row::Plain(plain_row) => PageType::Plain(plain_row.page_type()),
+            Row::Ext(ext_row) => PageType::Ext(ext_row.page_type()),
+            Row::Unknown => panic!("Unable to determine page type for unknown row"),
+        }
     }
 }
 

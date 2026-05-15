@@ -10,6 +10,7 @@
 
 mod model;
 mod schema;
+pub mod defaults;
 
 use diesel::connection::SimpleConnection;
 use diesel::sqlite::SqliteConnection;
@@ -83,5 +84,17 @@ impl Database {
         let mut conn = establish_connection(path, key)?;
         conn.batch_execute(SCHEMA_SQL)?;
         Ok(Self { conn })
+    }
+
+    /// Create a new Device Library Plus database with the schema and default seed rows.
+    pub fn create_with_defaults<P: AsRef<Path>>(path: P) -> Result<Self> {
+        let mut db = Self::create(path)?;
+        defaults::insert_initial_content(&mut db.conn)?;
+        Ok(db)
+    }
+
+    /// Return a mutable reference to the underlying database connection.
+    pub fn connection_mut(&mut self) -> &mut SqliteConnection {
+        &mut self.conn
     }
 }

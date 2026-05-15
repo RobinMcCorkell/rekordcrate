@@ -204,3 +204,13 @@ impl PageHeapObject for ExtRow {
         }
     }
 }
+
+impl ExtRow {
+    /// Returns the [`ExtPageType`] that this row belongs to.
+    pub(crate) fn page_type(&self) -> ExtPageType {
+        match self {
+            ExtRow::Tag(_) => ExtPageType::Tag,
+            ExtRow::TrackTag(_) => ExtPageType::TrackTag,
+        }
+    }
+}

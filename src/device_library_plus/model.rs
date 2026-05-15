@@ -9,14 +9,14 @@
 use diesel::associations::HasTable;
 use diesel::helper_types::{AsSelect, Find, Select};
 use diesel::prelude::*;
-use diesel::query_builder::InsertStatement;
-use diesel::query_builder::QueryId;
+use diesel::query_builder::{AsQuery, InsertStatement, QueryId};
 use diesel::query_dsl::methods::{ExecuteDsl, FindDsl, SelectDsl};
 use diesel::query_dsl::LoadQuery;
 use diesel::sqlite::Sqlite;
 use diesel_derive_newtype::DieselNewType;
 
 use super::schema;
+use super::schema::*;
 use crate::util::FileType;
 
 /// Base trait for all model types that map to a database table.
@@ -32,8 +32,6 @@ where
         <Self as HasTable>::Table,
         <&'a Self as Insertable<<Self as HasTable>::Table>>::Values,
     >: ExecuteDsl<SqliteConnection>,
-    for<'query> Select<<Self as HasTable>::Table, AsSelect<Self, Sqlite>>:
-        LoadQuery<'query, SqliteConnection, Self>,
 {
     fn insert(&self, conn: &mut SqliteConnection) -> QueryResult<usize> {
         diesel::insert_into(Self::table())
@@ -41,8 +39,14 @@ where
             .execute(conn)
     }
 
-    fn all(conn: &mut SqliteConnection) -> QueryResult<Vec<Self>> {
-        SelectDsl::select(Self::table(), Self::as_select()).load(conn)
+    fn all(conn: &mut SqliteConnection) -> QueryResult<Vec<Self>>
+    where
+        <Self as Selectable<Sqlite>>::SelectExpression: QueryId,
+        <Self as HasTable>::Table: SelectDsl<AsSelect<Self, Sqlite>>,
+        <<Self as HasTable>::Table as SelectDsl<AsSelect<Self, Sqlite>>>::Output:
+            for<'query> LoadQuery<'query, SqliteConnection, Self>,
+    {
+        SelectDsl::select(<Self as HasTable>::table(), Self::as_select()).load(conn)
     }
 }
 
@@ -52,23 +56,23 @@ where
 /// type. Implementors derive [`HasTable`] automatically via `#[derive(Identifiable)]`.
 pub trait IdentifiableRecord: TableRecord
 where
-    <Self as Selectable<Sqlite>>::SelectExpression: QueryId,
     for<'a> &'a Self: Insertable<<Self as HasTable>::Table>,
     for<'a> InsertStatement<
         <Self as HasTable>::Table,
         <&'a Self as Insertable<<Self as HasTable>::Table>>::Values,
     >: ExecuteDsl<SqliteConnection>,
-    <Self as HasTable>::Table: SelectDsl<AsSelect<Self, Sqlite>> + FindDsl<Self::Id>,
-    for<'query> Select<<Self as HasTable>::Table, AsSelect<Self, Sqlite>>:
-        LoadQuery<'query, SqliteConnection, Self>,
-    Find<<Self as HasTable>::Table, Self::Id>: SelectDsl<AsSelect<Self, Sqlite>>,
-    for<'query> Select<Find<<Self as HasTable>::Table, Self::Id>, AsSelect<Self, Sqlite>>:
-        LoadQuery<'query, SqliteConnection, Self>,
 {
     /// The primary key type for this table.
     type Id;
 
-    fn by_id(conn: &mut SqliteConnection, id: Self::Id) -> QueryResult<Option<Self>> {
+    fn by_id(conn: &mut SqliteConnection, id: Self::Id) -> QueryResult<Option<Self>>
+    where
+        <Self as Selectable<Sqlite>>::SelectExpression: QueryId,
+        <Self as HasTable>::Table: FindDsl<Self::Id>,
+        Find<<Self as HasTable>::Table, Self::Id>: SelectDsl<AsSelect<Self, Sqlite>>,
+        <Find<<Self as HasTable>::Table, Self::Id> as SelectDsl<AsSelect<Self, Sqlite>>>::Output:
+            for<'query> LoadQuery<'query, SqliteConnection, Self>,
+    {
         SelectDsl::select(FindDsl::find(Self::table(), id), Self::as_select())
             .get_result(conn)
             .optional()

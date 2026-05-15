@@ -22,6 +22,7 @@ use super::*;
 use crate::util::{RekordcrateError, RekordcrateResult, TableIndex};
 use binrw::{binrw, io::SeekFrom, BinRead, BinResult, BinWrite, Endian};
 use fallible_iterator::{FallibleIterator, IteratorExt};
+use std::collections::BTreeMap;
 use std::io::{Read, Seek, Write};
 
 /// A lazily loaded PDB database.
@@ -207,6 +208,183 @@ impl<RW: Read + Write + Seek> Database<RW> {
             db_type,
             content,
         })
+    }
+
+    /// Creates a new PDB database with a blank set of tables.
+    pub fn create(io: RW, db_type: DatabaseType) -> RekordcrateResult<Self> {
+        const PAGE_SIZE: u32 = 4096;
+        const NUM_TABLES: u32 = 20;
+
+        let page_types: [PageType; 20] = [
+            PageType::Plain(PlainPageType::Tracks),
+            PageType::Plain(PlainPageType::Genres),
+            PageType::Plain(PlainPageType::Artists),
+            PageType::Plain(PlainPageType::Albums),
+            PageType::Plain(PlainPageType::Labels),
+            PageType::Plain(PlainPageType::Keys),
+            PageType::Plain(PlainPageType::Colors),
+            PageType::Plain(PlainPageType::PlaylistTree),
+            PageType::Plain(PlainPageType::PlaylistEntries),
+            PageType::Unknown(9),
+            PageType::Unknown(10),
+            PageType::Plain(PlainPageType::HistoryPlaylists),
+            PageType::Plain(PlainPageType::HistoryEntries),
+            PageType::Plain(PlainPageType::Artwork),
+            PageType::Unknown(14),
+            PageType::Unknown(15),
+            PageType::Plain(PlainPageType::Columns),
+            PageType::Plain(PlainPageType::Menu),
+            PageType::Unknown(18),
+            PageType::Plain(PlainPageType::History),
+        ];
+
+        // `next_unused_page` points past the last page (1..=20), so it's 21.
+        let next_unused_page = PageIndex(NUM_TABLES + 1);
+
+        let tables: Vec<Table> = page_types
+            .iter()
+            .enumerate()
+            .map(|(i, &page_type)| Table {
+                page_type,
+                empty_candidate: 0,
+                first_page: PageIndex(i as u32 + 1),
+                last_page: PageIndex(i as u32 + 1),
+            })
+            .collect();
+
+        let header = Header {
+            page_size: PAGE_SIZE,
+            num_tables: NUM_TABLES,
+            next_unused_page,
+            unknown: 0,
+            sequence: 1,
+            tables,
+        };
+
+        let free_size = DataPageContent::page_heap_size(PAGE_SIZE) as u16;
+        let pages: Vec<LazyPage> = page_types
+            .iter()
+            .enumerate()
+            .map(|(i, &page_type)| {
+                LazyPage::Loaded(Page {
+                    header: PageHeader {
+                        page_index: PageIndex(i as u32 + 1),
+                        page_type,
+                        next_page: next_unused_page,
+                        unknown1: 0,
+                        unknown2: 0,
+                        packed_row_counts: PackedRowCounts::default(),
+                        page_flags: PageFlags::new_data_page(),
+                        free_size,
+                        used_size: 0,
+                    },
+                    content: PageContent::Data(DataPageContent {
+                        header: DataPageHeader {
+                            unknown5: 0,
+                            unknown_not_num_rows_large: 0,
+                            unknown6: 0,
+                            unknown7: 0,
+                        },
+                        row_groups: vec![],
+                        rows: BTreeMap::new(),
+                    }),
+                })
+            })
+            .collect();
+
+        let mut db = Self {
+            io,
+            db_type,
+            content: LazyDatabase { header, pages },
+        };
+        db.flush()?;
+        Ok(db)
+    }
+
+    /// Inserts a row into the appropriate table based on its type.
+    ///
+    /// If the current last page for the row's table is full, a new page is allocated.
+    pub fn insert_row(&mut self, row: Row) -> RekordcrateResult<()> {
+        let page_type = row.page_type();
+        let bytes = row.heap_bytes_required(());
+        let page_size = self.content.header.page_size;
+
+        // Get the last page index for this table type.
+        let last_page_idx = self
+            .content
+            .header
+            .find_table(page_type)
+            .ok_or_else(|| RekordcrateError::TableTypeNotPresent(page_type))?
+            .1
+            .last_page;
+
+        let slice_index = last_page_idx.0 as usize - 1;
+
+        // Load the page if not already loaded.
+        if matches!(self.content.pages[slice_index], LazyPage::NotLoaded) {
+            let page = read_page(&mut self.io, last_page_idx, page_size, self.db_type)?;
+            self.content.pages[slice_index] = LazyPage::Loaded(page);
+        }
+
+        // Try to allocate a row in the current last page.
+        if let LazyPage::Loaded(page) = &mut self.content.pages[slice_index] {
+            if let Some(insert) = page.allocate_row(bytes) {
+                insert(row);
+                return Ok(());
+            }
+        }
+
+        // The page is full — allocate a new page.
+        let new_page_idx = self.content.header.next_unused_page;
+        let after_new_page_idx = PageIndex(new_page_idx.0 + 1);
+        let free_size = DataPageContent::page_heap_size(page_size) as u16;
+
+        let new_page = Page {
+            header: PageHeader {
+                page_index: new_page_idx,
+                page_type,
+                next_page: after_new_page_idx,
+                unknown1: 0,
+                unknown2: 0,
+                packed_row_counts: PackedRowCounts::default(),
+                page_flags: PageFlags::new_data_page(),
+                free_size,
+                used_size: 0,
+            },
+            content: PageContent::Data(DataPageContent {
+                header: DataPageHeader {
+                    unknown5: 0,
+                    unknown_not_num_rows_large: 0,
+                    unknown6: 0,
+                    unknown7: 0,
+                },
+                row_groups: vec![],
+                rows: BTreeMap::new(),
+            }),
+        };
+
+        // Link the old last page to the new page.
+        if let LazyPage::Loaded(old_page) = &mut self.content.pages[slice_index] {
+            old_page.header.next_page = new_page_idx;
+        }
+
+        // Update the header and table metadata.
+        self.content.header.next_unused_page = after_new_page_idx;
+        if let Some((_, table)) = self.content.header.find_table_mut(page_type) {
+            table.last_page = new_page_idx;
+        }
+
+        // Push and insert into the new page.
+        self.content.pages.push(LazyPage::Loaded(new_page));
+        let new_slice_index = self.content.pages.len() - 1;
+        if let LazyPage::Loaded(page) = &mut self.content.pages[new_slice_index] {
+            let insert = page
+                .allocate_row(bytes)
+                .expect("new empty page should have space for row");
+            insert(row);
+        }
+
+        Ok(())
     }
 
     /// Flushes all changes to the underlying IO.
