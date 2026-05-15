@@ -550,6 +550,7 @@ impl ContentBuilder {
     pub fn hot_cue_auto_load(mut self, v: BinaryFlag) -> Self { self.0.is_hot_cue_auto_load_on = Some(v.into()); self }
     pub fn kuvo_deliver_status(mut self, v: BinaryFlag) -> Self { self.0.is_kuvo_deliver_status_on = Some(v.into()); self }
     pub fn analysed_bits(mut self, v: i32) -> Self { self.0.analysed_bits = Some(v); self }
+    pub fn analysis_data_file_path(mut self, v: impl Into<String>) -> Self { self.0.analysis_data_file_path = Some(v.into()); self }
     pub fn has_modified(mut self, v: BinaryFlag) -> Self { self.0.has_modified = Some(v.into()); self }
     pub fn cue_update_count(mut self, v: i32) -> Self { self.0.cue_update_count = Some(v); self }
     pub fn analysis_data_update_count(mut self, v: i32) -> Self { self.0.analysis_data_update_count = Some(v); self }

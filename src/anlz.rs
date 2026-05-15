@@ -398,13 +398,13 @@ pub struct TinyWaveformPreviewColumn {
 /// See these the documentation for details:
 /// <https://djl-analysis.deepsymmetry.org/djl-analysis/track_metadata.html#color-preview-analysis>
 #[binrw]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 #[brw(big)]
 pub struct WaveformColorPreviewColumn {
     /// Unknown field (somehow encodes the "whiteness").
-    unknown1: u8,
+    pub unknown1: u8,
     /// Unknown field (somehow encodes the "whiteness").
-    unknown2: u8,
+    pub unknown2: u8,
     /// Sound energy in the bottom half of the frequency range (<10 KHz).
     pub energy_bottom_half_freq: u8,
     /// Sound energy in the bottom third of the frequency range.
@@ -959,6 +959,25 @@ pub struct ANLZ {
 }
 
 impl ANLZ {
+    /// Standard file header data bytes, as seen in exported Rekordbox files.
+    const HEADER_DATA: [u8; 16] = [0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0];
+
+    /// Construct an ANLZ file from sections, computing the file header size automatically.
+    pub fn new(sections: Vec<Section>) -> Self {
+        let sections_size: u32 = sections.iter().map(|s| s.header.total_size).sum();
+        // File header: 12 standard bytes + 16 header_data bytes = 28 bytes
+        let header_size = 12 + Self::HEADER_DATA.len() as u32;
+        Self {
+            header: Header {
+                kind: ContentKind::File,
+                size: header_size,
+                total_size: header_size + sections_size,
+            },
+            header_data: Self::HEADER_DATA.to_vec(),
+            sections,
+        }
+    }
+
     fn parse_sections<R: Read + Seek>(
         reader: &mut R,
         endian: Endian,
@@ -974,5 +993,276 @@ impl ANLZ {
         }
 
         Ok(sections)
+    }
+}
+
+impl BeatGrid {
+    /// Create a new `BeatGrid` with the given beats.
+    pub fn new(beats: Vec<Beat>) -> Self {
+        Self {
+            unknown1: 0,
+            // This constant value appears in all observed Rekordbox exports.
+            unknown2: 0x00080000,
+            beats,
+        }
+    }
+}
+
+impl Beat {
+    /// Create a new `Beat` with the given beat number, tempo, and time.
+    pub fn new(beat_number: u16, tempo: u16, time: u32) -> Self {
+        Self {
+            beat_number,
+            tempo,
+            time,
+        }
+    }
+}
+
+impl CueList {
+    /// Create a new `CueList` of the given type.
+    pub fn new(list_type: CueListType, cues: Vec<Cue>) -> Self {
+        Self {
+            list_type,
+            unknown: 0,
+            // Observed value in Rekordbox exports when the list is non-empty; 0 when empty.
+            memory_count: if cues.is_empty() { 0 } else { 0xFFFF_FFFF },
+            cues,
+        }
+    }
+}
+
+impl ExtendedCueList {
+    /// Create a new empty `ExtendedCueList` placeholder of the given type.
+    pub fn empty(list_type: CueListType) -> Self {
+        Self {
+            list_type,
+            unknown: 0,
+            cues: vec![],
+        }
+    }
+}
+
+impl Cue {
+    // Section header size for a cue entry (kind + size + total_size + extended header fields).
+    const SECTION_SIZE: u32 = 28;
+    // Total size of one cue entry including header and all fields.
+    const TOTAL_SIZE: u32 = 56;
+
+    /// Create a new cue point or loop entry.
+    ///
+    /// `order_index` is the 1-based position of this cue in its list (used for `order_first` /
+    /// `order_last` sentinel values):
+    /// - `order_first`: `0xFFFF` for the first cue, or `order_index - 2` for others.
+    /// - `order_last`: `0xFFFF` for the last cue, or `order_index` for others.
+    pub fn new(
+        hot_cue: u32,
+        cue_type: CueType,
+        time: u32,
+        loop_time: u32,
+        order_index: u32,
+        is_last: bool,
+    ) -> Self {
+        let order_first = if order_index <= 1 {
+            0xFFFF
+        } else {
+            (order_index - 2) as u16
+        };
+        let order_last = if is_last { 0xFFFF } else { order_index as u16 };
+        Self {
+            header: Header {
+                kind: ContentKind::Cue,
+                size: Self::SECTION_SIZE,
+                total_size: Self::TOTAL_SIZE,
+            },
+            hot_cue,
+            status: if matches!(cue_type, CueType::Loop) { 4 } else { 0 },
+            // This constant value appears in all observed Rekordbox exports.
+            unknown1: 0x00010000,
+            order_first,
+            order_last,
+            cue_type,
+            unknown2: 0,
+            // This constant value appears in all observed Rekordbox exports.
+            unknown3: 0x03E8,
+            time,
+            loop_time,
+            unknown4: 0,
+            unknown5: 0,
+            unknown6: 0,
+            unknown7: 0,
+        }
+    }
+}
+
+impl WaveformPreview {
+    // Section header size: 12 standard + 4 (len_preview) + 4 (unknown) = 20.
+    const SECTION_SIZE: u32 = 20;
+
+    /// Create a new `WaveformPreview` from the given column data.
+    pub fn new(data: Vec<WaveformPreviewColumn>) -> Self {
+        Self {
+            // This constant value appears in all observed Rekordbox exports.
+            unknown: 0x00010000,
+            data,
+        }
+    }
+}
+
+impl TinyWaveformPreview {
+    // Section header size: 12 standard + 4 (len_preview) + 4 (unknown) = 20.
+    const SECTION_SIZE: u32 = 20;
+
+    /// Create a new `TinyWaveformPreview` from the given column data.
+    pub fn new(data: Vec<TinyWaveformPreviewColumn>) -> Self {
+        Self {
+            // This constant value appears in all observed Rekordbox exports.
+            unknown: 0x00010000,
+            data,
+        }
+    }
+}
+
+impl WaveformDetail {
+    // Section header size: 12 standard + 4 (len_entry_bytes) + 4 (len_entries) + 4 (unknown) = 24.
+    const SECTION_SIZE: u32 = 24;
+
+    /// Create a new `WaveformDetail` from the given column data.
+    pub fn new(data: Vec<WaveformPreviewColumn>) -> Self {
+        Self {
+            // This constant value appears in all observed Rekordbox exports.
+            unknown: 0x00960000,
+            data,
+        }
+    }
+}
+
+impl WaveformColorPreview {
+    // Section header size: 12 standard + 4 (len_entry_bytes) + 4 (len_entries) + 4 (unknown) = 24.
+    const SECTION_SIZE: u32 = 24;
+
+    /// Create a new `WaveformColorPreview` from the given column data.
+    pub fn new(data: Vec<WaveformColorPreviewColumn>, unknown: u32) -> Self {
+        Self { unknown, data }
+    }
+}
+
+impl WaveformColorDetail {
+    // Section header size: 12 standard + 4 (len_entry_bytes) + 4 (len_entries) + 4 (unknown) = 24.
+    const SECTION_SIZE: u32 = 24;
+
+    /// Create a new `WaveformColorDetail` from the given column data.
+    pub fn new(data: Vec<WaveformColorDetailColumn>, unknown: u32) -> Self {
+        Self { unknown, data }
+    }
+}
+
+impl VBR {
+    // Section header size: 12 standard + 4 (unknown1) = 16.
+    const SECTION_SIZE: u32 = 16;
+
+    /// Create a new blank `VBR` section of the given byte length.
+    ///
+    /// Used for CBR files where no VBR seek table is needed. The content is all zeros.
+    pub fn new_blank(content_len: usize) -> Self {
+        Self {
+            unknown1: 0,
+            unknown2: vec![0u8; content_len],
+        }
+    }
+}
+
+impl Path {
+    // Section header size: 12 standard + 4 (len_path) = 16.
+    const SECTION_SIZE: u32 = 16;
+
+    /// Create a new `Path` section from a file path string.
+    pub fn new(path: NullWideString) -> Self {
+        Self { path }
+    }
+}
+
+impl Section {
+    /// Construct a `Section` from content, computing the `Header` sizes automatically.
+    pub fn new(content: Content) -> Self {
+        let (section_size, content_bytes) = match &content {
+            Content::Path(p) => {
+                let content_bytes = (p.path.len() as u32 + 1) * 2;
+                (Path::SECTION_SIZE, content_bytes)
+            }
+            Content::VBR(v) => {
+                // unknown1 (4 bytes) is in the header area; unknown2 is content.
+                let content_bytes = v.unknown2.len() as u32;
+                (VBR::SECTION_SIZE, content_bytes)
+            }
+            Content::BeatGrid(bg) => {
+                // unknown1, unknown2, len_beats (12 bytes) are in the header area; beats are content.
+                let content_bytes = bg.beats.len() as u32 * 8;
+                (24, content_bytes)
+            }
+            Content::WaveformPreview(wp) => {
+                // len_preview + unknown (8 bytes) are in the header area; data is content.
+                let content_bytes = wp.data.len() as u32;
+                (WaveformPreview::SECTION_SIZE, content_bytes)
+            }
+            Content::TinyWaveformPreview(wp) => {
+                let content_bytes = wp.data.len() as u32;
+                (TinyWaveformPreview::SECTION_SIZE, content_bytes)
+            }
+            Content::WaveformDetail(wd) => {
+                // len_entry_bytes + len_entries + unknown (12 bytes) in header; data is content.
+                let content_bytes = wd.data.len() as u32;
+                (WaveformDetail::SECTION_SIZE, content_bytes)
+            }
+            Content::WaveformColorPreview(wcp) => {
+                let content_bytes = wcp.data.len() as u32 * 6;
+                (WaveformColorPreview::SECTION_SIZE, content_bytes)
+            }
+            Content::WaveformColorDetail(wcd) => {
+                let content_bytes = wcd.data.len() as u32 * 2;
+                (WaveformColorDetail::SECTION_SIZE, content_bytes)
+            }
+            Content::CueList(cl) => {
+                // list_type + unknown + len_cues + memory_count (12 bytes) in header; cues are content.
+                let content_bytes = cl.cues.len() as u32 * Cue::TOTAL_SIZE;
+                (24, content_bytes)
+            }
+            Content::ExtendedCueList(_ecl) => {
+                // list_type + len_cues + unknown (8 bytes) in header.
+                // We only generate empty ExtendedCueLists, so content is always 0.
+                (20, 0)
+            }
+            Content::SongStructure(_) | Content::Unknown(_) => {
+                panic!("cannot compute size for SongStructure or Unknown content")
+            }
+        };
+        let kind = content.kind();
+        Self {
+            header: Header {
+                kind,
+                size: section_size,
+                total_size: section_size + content_bytes,
+            },
+            content,
+        }
+    }
+}
+
+impl Content {
+    fn kind(&self) -> ContentKind {
+        match self {
+            Self::BeatGrid(_) => ContentKind::BeatGrid,
+            Self::CueList(_) => ContentKind::CueList,
+            Self::ExtendedCueList(_) => ContentKind::ExtendedCueList,
+            Self::Path(_) => ContentKind::Path,
+            Self::VBR(_) => ContentKind::VBR,
+            Self::WaveformPreview(_) => ContentKind::WaveformPreview,
+            Self::TinyWaveformPreview(_) => ContentKind::TinyWaveformPreview,
+            Self::WaveformDetail(_) => ContentKind::WaveformDetail,
+            Self::WaveformColorPreview(_) => ContentKind::WaveformColorPreview,
+            Self::WaveformColorDetail(_) => ContentKind::WaveformColorDetail,
+            Self::SongStructure(_) => ContentKind::SongStructure,
+            Self::Unknown(_) => ContentKind::Unknown([0, 0, 0, 0]),
+        }
     }
 }

@@ -1784,7 +1784,7 @@ pub struct TrackStrings {
     /// Unknown string field (usually empty).
     unknown_string7: DeviceSQLString,
     /// File path of the track analysis file.
-    analyze_path: DeviceSQLString,
+    pub analyze_path: DeviceSQLString,
     /// Date when the track analysis was performed (YYYY-MM-DD).
     analyze_date: DeviceSQLString,
     /// Track comment.
