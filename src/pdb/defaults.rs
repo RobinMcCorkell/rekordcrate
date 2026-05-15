@@ -50,9 +50,10 @@ pub fn insert_standard_keys<IO: Read + Write + Seek>(db: &mut Database<IO>) -> R
 
 /// Insert the standard Rekordbox color palette.
 pub fn insert_standard_colors<IO: Read + Write + Seek>(db: &mut Database<IO>) -> Result<()> {
-    for &(ref color, name) in STANDARD_COLORS {
+    for (i, &(ref color, name)) in STANDARD_COLORS.iter().enumerate() {
         db.insert_row(Row::Plain(PlainRow::Color(Color::new(
             color.clone(),
+            (i + 1) as u8,
             name.parse()?,
         ))))?;
     }

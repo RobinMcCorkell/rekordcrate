@@ -1232,11 +1232,11 @@ impl PageHeapObject for Color {
 }
 
 impl Color {
-    /// Create a new color row with the given color index and name.
-    pub fn new(color: ColorIndex, name: DeviceSQLString) -> Self {
+    /// Create a new color row with the given color index, entry number, and name.
+    pub fn new(color: ColorIndex, unknown2: u8, name: DeviceSQLString) -> Self {
         Self {
             unknown1: 0,
-            unknown2: 0,
+            unknown2,
             color,
             unknown3: 0,
             name,
