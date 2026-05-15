@@ -7,24 +7,26 @@
 // SPDX-License-Identifier: MPL-2.0
 
 use diesel::associations::HasTable;
-use diesel::helper_types::{AsSelect, Find, Select};
+use diesel::helper_types::{AsSelect, Find};
 use diesel::prelude::*;
-use diesel::query_builder::{AsQuery, InsertStatement, QueryId};
-use diesel::query_dsl::methods::{ExecuteDsl, FindDsl, SelectDsl};
+use diesel::query_builder::{InsertStatement, QueryId};
+use diesel::query_dsl::methods::{ExecuteDsl, SelectDsl};
 use diesel::query_dsl::LoadQuery;
 use diesel::sqlite::Sqlite;
 use diesel_derive_newtype::DieselNewType;
 
 use super::schema;
-use super::schema::*;
 use crate::util::FileType;
 
-/// Base trait for all model types that map to a database table.
+/// Base trait for table-backed model types.
 ///
-/// Provides [`insert`](TableRecord::insert) and [`all`](TableRecord::all) as
-/// default implementations. Table linkage is provided by [`HasTable`], which is
-/// derived for single-PK structs via `#[derive(Identifiable)]` and implemented
-/// manually for composite-key structs.
+/// Provides [`insert`] and [`all`] as default implementations built on diesel.
+/// Table linkage comes from [`HasTable`]: single-PK structs derive it via
+/// `#[derive(Identifiable)]`; composite-PK structs implement it manually.
+///
+/// The `where` clause repeats diesel's internal constraints so the default
+/// method bodies compile in a generic context without downstream callers needing
+/// to spell them out.
 pub trait TableRecord: Sized + HasTable + Selectable<Sqlite>
 where
     for<'a> &'a Self: Insertable<<Self as HasTable>::Table>,
@@ -46,14 +48,15 @@ where
         <<Self as HasTable>::Table as SelectDsl<AsSelect<Self, Sqlite>>>::Output:
             for<'query> LoadQuery<'query, SqliteConnection, Self>,
     {
-        SelectDsl::select(<Self as HasTable>::table(), Self::as_select()).load(conn)
+        diesel::QueryDsl::select(Self::table(), Self::as_select()).load(conn)
     }
 }
 
-/// Extension of [`TableRecord`] for tables with a single primary key.
+/// Extension of [`TableRecord`] for tables with a single integer primary key.
 ///
-/// Adds [`by_id`](IdentifiableRecord::by_id) using the associated [`Id`](IdentifiableRecord::Id)
-/// type. Implementors derive [`HasTable`] automatically via `#[derive(Identifiable)]`.
+/// Adds [`by_id`](Self::by_id) using the associated [`Id`](Self::Id) type.
+/// The boilerplate `where` clause is identical to [`TableRecord`]'s because
+/// Rust does not yet propagate supertrait bounds to concrete method bodies.
 pub trait IdentifiableRecord: TableRecord
 where
     for<'a> &'a Self: Insertable<<Self as HasTable>::Table>,
@@ -68,14 +71,12 @@ where
     fn by_id(conn: &mut SqliteConnection, id: Self::Id) -> QueryResult<Option<Self>>
     where
         <Self as Selectable<Sqlite>>::SelectExpression: QueryId,
-        <Self as HasTable>::Table: FindDsl<Self::Id>,
+        <Self as HasTable>::Table: diesel::query_dsl::methods::FindDsl<Self::Id>,
         Find<<Self as HasTable>::Table, Self::Id>: SelectDsl<AsSelect<Self, Sqlite>>,
         <Find<<Self as HasTable>::Table, Self::Id> as SelectDsl<AsSelect<Self, Sqlite>>>::Output:
             for<'query> LoadQuery<'query, SqliteConnection, Self>,
     {
-        SelectDsl::select(FindDsl::find(Self::table(), id), Self::as_select())
-            .get_result(conn)
-            .optional()
+        Self::table().find(id).select(Self::as_select()).get_result(conn).optional()
     }
 }
 
@@ -127,6 +128,8 @@ pub struct PlaylistId(pub i32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DieselNewType)]
 pub struct SortId(pub i32);
 
+// All Id newtypes wrap an i32. These conversions let callers use `Id::from(n)` and
+// `i32::from(id)` without needing to access the inner field directly.
 macro_rules! impl_id_conversions {
     ($($ty:ty),* $(,)?) => {
         $(
@@ -180,6 +183,12 @@ impl From<i32> for BinaryFlag {
             1 => Self::On,
             other => Self::Other(other),
         }
+    }
+}
+
+impl From<BinaryFlag> for i32 {
+    fn from(value: BinaryFlag) -> Self {
+        value.as_i32()
     }
 }
 
@@ -237,6 +246,12 @@ impl From<FileType> for ContentFileType {
     }
 }
 
+impl From<ContentFileType> for i32 {
+    fn from(value: ContentFileType) -> Self {
+        value.as_i32()
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaylistAttribute {
     Default,
@@ -253,6 +268,14 @@ impl PlaylistAttribute {
     }
 }
 
+impl From<PlaylistAttribute> for i32 {
+    fn from(value: PlaylistAttribute) -> Self {
+        value.as_i32()
+    }
+}
+
+/// Represents the background color theme of the Rekordbox library view.
+/// Currently always [`Default`](Self::Default) in exported databases.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BackgroundColorType {
     Default,
@@ -266,6 +289,12 @@ impl BackgroundColorType {
             Self::Default => 0,
             Self::Other(value) => value,
         }
+    }
+}
+
+impl From<BackgroundColorType> for i32 {
+    fn from(value: BackgroundColorType) -> Self {
+        value.as_i32()
     }
 }
 
@@ -343,7 +372,7 @@ impl Category {
             category_id,
             menu_item_id,
             sequence_no,
-            is_visible: is_visible.as_i32(),
+            is_visible: i32::from(is_visible),
         }
     }
 }
@@ -514,14 +543,14 @@ impl ContentBuilder {
     pub fn path(mut self, v: impl Into<String>) -> Self { self.0.path = Some(v.into()); self }
     pub fn file_name(mut self, v: impl Into<String>) -> Self { self.0.file_name = Some(v.into()); self }
     pub fn file_size(mut self, v: i32) -> Self { self.0.file_size = Some(v); self }
-    pub fn file_type(mut self, v: ContentFileType) -> Self { self.0.file_type = Some(v.as_i32()); self }
+    pub fn file_type(mut self, v: ContentFileType) -> Self { self.0.file_type = Some(v.into()); self }
     pub fn bitrate(mut self, v: i32) -> Self { self.0.bitrate = Some(v); self }
     pub fn sampling_rate(mut self, v: i32) -> Self { self.0.sampling_rate = Some(v); self }
     pub fn dj_play_count(mut self, v: i32) -> Self { self.0.dj_play_count = Some(v); self }
-    pub fn hot_cue_auto_load(mut self, v: BinaryFlag) -> Self { self.0.is_hot_cue_auto_load_on = Some(v.as_i32()); self }
-    pub fn kuvo_deliver_status(mut self, v: BinaryFlag) -> Self { self.0.is_kuvo_deliver_status_on = Some(v.as_i32()); self }
+    pub fn hot_cue_auto_load(mut self, v: BinaryFlag) -> Self { self.0.is_hot_cue_auto_load_on = Some(v.into()); self }
+    pub fn kuvo_deliver_status(mut self, v: BinaryFlag) -> Self { self.0.is_kuvo_deliver_status_on = Some(v.into()); self }
     pub fn analysed_bits(mut self, v: i32) -> Self { self.0.analysed_bits = Some(v); self }
-    pub fn has_modified(mut self, v: BinaryFlag) -> Self { self.0.has_modified = Some(v.as_i32()); self }
+    pub fn has_modified(mut self, v: BinaryFlag) -> Self { self.0.has_modified = Some(v.into()); self }
     pub fn cue_update_count(mut self, v: i32) -> Self { self.0.cue_update_count = Some(v); self }
     pub fn analysis_data_update_count(mut self, v: i32) -> Self { self.0.analysis_data_update_count = Some(v); self }
     pub fn information_update_count(mut self, v: i32) -> Self { self.0.information_update_count = Some(v); self }
@@ -610,11 +639,14 @@ pub struct HistoryContent {
     pub sequence_no: i32,
 }
 
+// Composite-PK tables cannot use #[derive(Identifiable)] for HasTable because
+// diesel's Identifiable derive only supports single-column primary keys.
+// We implement HasTable manually so TableRecord::insert() still works.
 impl HasTable for HistoryContent {
-    type Table = history_content::table;
+    type Table = schema::history_content::table;
 
     fn table() -> Self::Table {
-        history_content::table
+        schema::history_content::table
     }
 }
 
@@ -654,10 +686,10 @@ pub struct HotCueBankListCue {
 }
 
 impl HasTable for HotCueBankListCue {
-    type Table = hot_cue_bank_list_cue::table;
+    type Table = schema::hot_cue_bank_list_cue::table;
 
     fn table() -> Self::Table {
-        hot_cue_bank_list_cue::table
+        schema::hot_cue_bank_list_cue::table
     }
 }
 
@@ -763,10 +795,10 @@ pub struct MyTagContent {
 }
 
 impl HasTable for MyTagContent {
-    type Table = my_tag_content::table;
+    type Table = schema::my_tag_content::table;
 
     fn table() -> Self::Table {
-        my_tag_content::table
+        schema::my_tag_content::table
     }
 }
 
@@ -801,7 +833,7 @@ impl Playlist {
             sequence_no,
             name: name.into(),
             image_id: None,
-            attribute: attribute.as_i32(),
+            attribute: i32::from(attribute),
             playlist_id_parent: PlaylistId(0),
         }
     }
@@ -820,10 +852,10 @@ pub struct PlaylistContent {
 }
 
 impl HasTable for PlaylistContent {
-    type Table = playlist_content::table;
+    type Table = schema::playlist_content::table;
 
     fn table() -> Self::Table {
-        playlist_content::table
+        schema::playlist_content::table
     }
 }
 
@@ -841,10 +873,10 @@ pub struct Property {
 }
 
 impl HasTable for Property {
-    type Table = property::table;
+    type Table = schema::property::table;
 
     fn table() -> Self::Table {
-        property::table
+        schema::property::table
     }
 }
 
@@ -869,7 +901,7 @@ impl Property {
     }
 
     pub fn first(conn: &mut SqliteConnection) -> QueryResult<Option<Self>> {
-        SelectDsl::select(property::table, Self::as_select())
+        diesel::QueryDsl::select(schema::property::table, Self::as_select())
             .first(conn)
             .optional()
     }
@@ -889,10 +921,10 @@ pub struct RecommendedLike {
 }
 
 impl HasTable for RecommendedLike {
-    type Table = recommended_like::table;
+    type Table = schema::recommended_like::table;
 
     fn table() -> Self::Table {
-        recommended_like::table
+        schema::recommended_like::table
     }
 }
 
@@ -920,8 +952,8 @@ impl Sort {
             sort_id,
             menu_item_id,
             sequence_no,
-            is_visible: is_visible.as_i32(),
-            is_selected_as_sub_column: is_selected_as_sub_column.as_i32(),
+            is_visible: i32::from(is_visible),
+            is_selected_as_sub_column: i32::from(is_selected_as_sub_column),
         }
     }
 }
