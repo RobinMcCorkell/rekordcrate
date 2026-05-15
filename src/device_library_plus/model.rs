@@ -127,6 +127,24 @@ pub struct PlaylistId(pub i32);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, DieselNewType)]
 pub struct SortId(pub i32);
 
+macro_rules! impl_id_conversions {
+    ($($ty:ty),* $(,)?) => {
+        $(
+            impl From<i32> for $ty {
+                fn from(value: i32) -> Self { Self(value) }
+            }
+            impl From<$ty> for i32 {
+                fn from(value: $ty) -> Self { value.0 }
+            }
+        )*
+    }
+}
+impl_id_conversions!(
+    AlbumId, ArtistId, CategoryId, ColorId, ContentId, CueId, GenreId,
+    HistoryId, HotCueBankListId, ImageId, KeyId, LabelId, MenuItemId,
+    MyTagId, PlaylistId, SortId,
+);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BinaryFlag {
     Off,
@@ -268,6 +286,19 @@ impl IdentifiableRecord for Album {
     type Id = AlbumId;
 }
 
+impl Album {
+    pub fn new(album_id: AlbumId, name: impl Into<String>) -> Self {
+        Self {
+            album_id,
+            name: name.into(),
+            artist_id: None,
+            image_id: None,
+            is_complation: None,
+            name_for_search: None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable, Identifiable)]
 #[diesel(table_name = schema::artist, primary_key(artist_id), check_for_backend(Sqlite))]
 pub struct Artist {
@@ -280,6 +311,16 @@ impl TableRecord for Artist {}
 
 impl IdentifiableRecord for Artist {
     type Id = ArtistId;
+}
+
+impl Artist {
+    pub fn new(artist_id: ArtistId, name: impl Into<String>) -> Self {
+        Self {
+            artist_id,
+            name: name.into(),
+            name_for_search: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable, Identifiable)]
@@ -392,6 +433,103 @@ impl IdentifiableRecord for Content {
     type Id = ContentId;
 }
 
+impl Content {
+    pub fn builder(content_id: ContentId) -> ContentBuilder {
+        ContentBuilder::new(content_id)
+    }
+}
+
+/// Builder for [`Content`] rows.
+#[derive(Debug)]
+pub struct ContentBuilder(Content);
+
+impl ContentBuilder {
+    fn new(content_id: ContentId) -> Self {
+        Self(Content {
+            content_id,
+            title: None,
+            title_for_search: None,
+            subtitle: None,
+            bpmx100: None,
+            length: None,
+            track_no: None,
+            disc_no: None,
+            artist_id_artist: None,
+            artist_id_remixer: None,
+            artist_id_original_artist: None,
+            artist_id_composer: None,
+            artist_id_lyricist: None,
+            album_id: None,
+            genre_id: None,
+            label_id: None,
+            key_id: None,
+            color_id: None,
+            image_id: None,
+            dj_comment: None,
+            rating: None,
+            release_year: None,
+            release_date: None,
+            date_created: None,
+            date_added: None,
+            path: None,
+            file_name: None,
+            file_size: None,
+            file_type: None,
+            bitrate: None,
+            bit_depth: None,
+            sampling_rate: None,
+            isrc: None,
+            dj_play_count: None,
+            is_hot_cue_auto_load_on: None,
+            is_kuvo_deliver_status_on: None,
+            kuvo_delivery_comment: None,
+            master_db_id: None,
+            master_content_id: None,
+            analysis_data_file_path: None,
+            analysed_bits: None,
+            content_link: None,
+            has_modified: None,
+            cue_update_count: None,
+            analysis_data_update_count: None,
+            information_update_count: None,
+        })
+    }
+
+    pub fn build(self) -> Content { self.0 }
+
+    pub fn title(mut self, v: impl Into<String>) -> Self { self.0.title = Some(v.into()); self }
+    pub fn bpmx100(mut self, v: i32) -> Self { self.0.bpmx100 = Some(v); self }
+    pub fn length(mut self, v: i32) -> Self { self.0.length = Some(v); self }
+    pub fn track_no(mut self, v: i32) -> Self { self.0.track_no = Some(v); self }
+    pub fn artist_id_artist(mut self, v: ArtistId) -> Self { self.0.artist_id_artist = Some(v); self }
+    pub fn album_id(mut self, v: AlbumId) -> Self { self.0.album_id = Some(v); self }
+    pub fn genre_id(mut self, v: GenreId) -> Self { self.0.genre_id = Some(v); self }
+    pub fn key_id(mut self, v: KeyId) -> Self { self.0.key_id = Some(v); self }
+    pub fn color_id(mut self, v: ColorId) -> Self { self.0.color_id = Some(v); self }
+    pub fn dj_comment(mut self, v: impl Into<String>) -> Self { self.0.dj_comment = Some(v.into()); self }
+    pub fn rating(mut self, v: i32) -> Self { self.0.rating = Some(v); self }
+    pub fn release_year(mut self, v: i32) -> Self { self.0.release_year = Some(v); self }
+    pub fn date_created(mut self, v: impl Into<String>) -> Self { self.0.date_created = Some(v.into()); self }
+    pub fn date_added(mut self, v: impl Into<String>) -> Self { self.0.date_added = Some(v.into()); self }
+    pub fn path(mut self, v: impl Into<String>) -> Self { self.0.path = Some(v.into()); self }
+    pub fn file_name(mut self, v: impl Into<String>) -> Self { self.0.file_name = Some(v.into()); self }
+    pub fn file_size(mut self, v: i32) -> Self { self.0.file_size = Some(v); self }
+    pub fn file_type(mut self, v: ContentFileType) -> Self { self.0.file_type = Some(v.as_i32()); self }
+    pub fn bitrate(mut self, v: i32) -> Self { self.0.bitrate = Some(v); self }
+    pub fn sampling_rate(mut self, v: i32) -> Self { self.0.sampling_rate = Some(v); self }
+    pub fn dj_play_count(mut self, v: i32) -> Self { self.0.dj_play_count = Some(v); self }
+    pub fn hot_cue_auto_load(mut self, v: BinaryFlag) -> Self { self.0.is_hot_cue_auto_load_on = Some(v.as_i32()); self }
+    pub fn kuvo_deliver_status(mut self, v: BinaryFlag) -> Self { self.0.is_kuvo_deliver_status_on = Some(v.as_i32()); self }
+    pub fn analysed_bits(mut self, v: i32) -> Self { self.0.analysed_bits = Some(v); self }
+    pub fn has_modified(mut self, v: BinaryFlag) -> Self { self.0.has_modified = Some(v.as_i32()); self }
+    pub fn cue_update_count(mut self, v: i32) -> Self { self.0.cue_update_count = Some(v); self }
+    pub fn analysis_data_update_count(mut self, v: i32) -> Self { self.0.analysis_data_update_count = Some(v); self }
+    pub fn information_update_count(mut self, v: i32) -> Self { self.0.information_update_count = Some(v); self }
+    pub fn master_db_id(mut self, v: i32) -> Self { self.0.master_db_id = Some(v); self }
+    pub fn master_content_id(mut self, v: i32) -> Self { self.0.master_content_id = Some(v); self }
+    pub fn content_link(mut self, v: i32) -> Self { self.0.content_link = Some(v); self }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable, Identifiable)]
 #[diesel(table_name = schema::cue, primary_key(cue_id), check_for_backend(Sqlite))]
 pub struct Cue {
@@ -436,6 +574,12 @@ impl TableRecord for Genre {}
 
 impl IdentifiableRecord for Genre {
     type Id = GenreId;
+}
+
+impl Genre {
+    pub fn new(genre_id: GenreId, name: impl Into<String>) -> Self {
+        Self { genre_id, name: name.into() }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable, Identifiable)]
@@ -643,6 +787,24 @@ impl TableRecord for Playlist {}
 
 impl IdentifiableRecord for Playlist {
     type Id = PlaylistId;
+}
+
+impl Playlist {
+    pub fn new(
+        playlist_id: PlaylistId,
+        sequence_no: i32,
+        name: impl Into<String>,
+        attribute: PlaylistAttribute,
+    ) -> Self {
+        Self {
+            playlist_id,
+            sequence_no,
+            name: name.into(),
+            image_id: None,
+            attribute: attribute.as_i32(),
+            playlist_id_parent: PlaylistId(0),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable)]
