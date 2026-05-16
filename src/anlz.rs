@@ -915,17 +915,45 @@ impl SongStructureData {
     }
 }
 
-/// Unknown content.
-#[binrw]
-#[derive(Debug, PartialEq, Eq)]
+/// Unknown content parsed from an unrecognized section type.
+///
+/// This exists only to allow reading and re-inspecting files that contain section kinds
+/// not yet implemented by rekordcrate. Writing an `Unknown` section is not supported —
+/// attempting to do so will panic.
+#[derive(BinRead, Debug, PartialEq, Eq)]
 #[br(import(header: Header))]
 pub struct Unknown {
-    /// Unknown header data.
+    /// The four-byte section kind tag that identified this section (e.g. `b"PQT2"`).
+    ///
+    /// Stored here so it can be displayed in the panic message if a caller accidentally
+    /// tries to round-trip a file that contains unknown sections.
+    #[br(calc = header.kind.clone())]
+    pub kind: ContentKind,
+    /// Extra header bytes following the standard `kind`/`size`/`total_size` triplet.
     #[br(count = header.remaining_size())]
-    header_data: Vec<u8>,
-    /// Unknown content data.
+    pub header_data: Vec<u8>,
+    /// Content bytes.
     #[br(count = header.content_size())]
-    content_data: Vec<u8>,
+    pub content_data: Vec<u8>,
+}
+
+impl BinWrite for Unknown {
+    type Args<'a> = ();
+
+    fn write_options<W: Write + Seek>(
+        &self,
+        _writer: &mut W,
+        _endian: Endian,
+        _args: Self::Args<'_>,
+    ) -> BinResult<()> {
+        panic!(
+            "cannot serialize unrecognized ANLZ section {:?}: \
+             {} header bytes, {} content bytes",
+            self.kind,
+            self.header_data.len(),
+            self.content_data.len(),
+        );
+    }
 }
 
 /// ANLZ Section.
@@ -976,6 +1004,16 @@ impl ANLZ {
             header_data: Self::HEADER_DATA.to_vec(),
             sections,
         }
+    }
+
+    /// Returns `true` if any section in this file has an unrecognized type.
+    ///
+    /// Files that return `true` here cannot be serialized; attempting to write them will panic.
+    /// Use this to guard round-trip code paths that should only run when every section is known.
+    pub fn has_unknown_sections(&self) -> bool {
+        self.sections
+            .iter()
+            .any(|s| matches!(s.content, Content::Unknown(_)))
     }
 
     fn parse_sections<R: Read + Seek>(
@@ -1262,7 +1300,10 @@ impl Content {
             Self::WaveformColorPreview(_) => ContentKind::WaveformColorPreview,
             Self::WaveformColorDetail(_) => ContentKind::WaveformColorDetail,
             Self::SongStructure(_) => ContentKind::SongStructure,
-            Self::Unknown(_) => ContentKind::Unknown([0, 0, 0, 0]),
+            Self::Unknown(u) => panic!(
+                "cannot determine ContentKind for unrecognized section {:?}",
+                u.kind
+            ),
         }
     }
 }

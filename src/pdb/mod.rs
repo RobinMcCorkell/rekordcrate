@@ -81,7 +81,13 @@ pub enum PageType {
     #[br(pre_assert(db_type == DatabaseType::Ext))]
     /// Pagetypes present in `exportExt.pdb` files.
     Ext(ExtPageType),
-    /// Unknown page type.
+    /// Placeholder table slot with an unrecognized page type.
+    ///
+    /// PDB files always contain exactly 20 table entries in a fixed layout. Several of those slots
+    /// (indices 9, 10, 14, 15, 18) hold page-type values that are not understood; they appear in
+    /// every known export but their contents are never populated. We preserve the raw u32 so that
+    /// the table header round-trips faithfully. Unlike [`Content::Unknown`](crate::anlz::Unknown)
+    /// in ANLZ files, these are intentionally serialized as part of any new database we create.
     Unknown(u32),
 }
 

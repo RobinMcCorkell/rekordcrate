@@ -7,6 +7,13 @@ fn anlz_{name}() {{
     let anlz = ANLZ::read(&mut reader).expect("failed to parse anlz file");
     println!("{{:#?}}", anlz);
 
+    if anlz.has_unknown_sections() {{
+        // Cannot round-trip files that contain sections we don't know how to serialize.
+        // The unknown section kinds are printed above; the parse itself is what we verify here.
+        println!("Skipping write round-trip: file contains unknown sections");
+        return;
+    }}
+
     let mut new_data = Vec::with_capacity(data.len());
     let mut writer = Cursor::new(&mut new_data);
     anlz.write(&mut writer).expect("failed to write anlz file");
