@@ -174,7 +174,7 @@ struct Track {
 }
 
 /// 0 star = "@0", 1 star = "51", 2 stars = "102", 3 stars = "153", 4 stars = "204", 5 stars = "255"
-#[expect(dead_code)]
+#[allow(dead_code)]
 #[derive(Debug, PartialEq, Clone, Copy, Serialize, Deserialize)]
 enum StarRating {
     Zero,

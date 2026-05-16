@@ -175,7 +175,7 @@ pub struct Cue {
     pub hot_cue: u32,
     /// Loop status. `4` if this cue is an active loop, `0` otherwise.
     pub status: u32,
-    /// Unknown field. Seems to always have the value `0x00100000`.
+    /// Unknown field. Seems to always have the value `0x00010000`.
     unknown1: u32,
     /// Somehow used for sorting cues.
     ///

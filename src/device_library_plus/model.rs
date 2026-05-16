@@ -6,6 +6,12 @@
 //
 // SPDX-License-Identifier: MPL-2.0
 
+// model.rs contains generated/mechanical Diesel struct definitions. Public doc comments
+// on every field and method would add ~1000 lines of boilerplate with negligible value,
+// so we allow missing_docs here; the module-level doc on device_library_plus covers the
+// overall design.
+#![allow(missing_docs)]
+
 use diesel::associations::HasTable;
 use diesel::helper_types::{AsSelect, Find};
 use diesel::prelude::*;
