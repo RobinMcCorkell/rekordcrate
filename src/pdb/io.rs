@@ -238,17 +238,22 @@ impl<RW: Read + Write + Seek> Database<RW> {
             PageType::Plain(PlainPageType::History),
         ];
 
-        // `next_unused_page` points past the last page (1..=20), so it's 21.
-        let next_unused_page = PageIndex(NUM_TABLES + 1);
+        // Each table gets two pages: an index page (odd-numbered) followed by a data page
+        // (even-numbered). `next_unused_page` points past the last page (1..=2*NUM_TABLES).
+        let next_unused_page = PageIndex(NUM_TABLES * 2 + 1);
 
         let tables: Vec<Table> = page_types
             .iter()
             .enumerate()
-            .map(|(i, &page_type)| Table {
-                page_type,
-                empty_candidate: 0,
-                first_page: PageIndex(i as u32 + 1),
-                last_page: PageIndex(i as u32 + 1),
+            .map(|(i, &page_type)| {
+                let index_page = PageIndex(i as u32 * 2 + 1);
+                let data_page = PageIndex(i as u32 * 2 + 2);
+                Table {
+                    page_type,
+                    empty_candidate: 0,
+                    first_page: index_page,
+                    last_page: data_page,
+                }
             })
             .collect();
 
@@ -256,41 +261,71 @@ impl<RW: Read + Write + Seek> Database<RW> {
             page_size: PAGE_SIZE,
             num_tables: NUM_TABLES,
             next_unused_page,
-            unknown: 0,
+            unknown: 1,
             sequence: 1,
             tables,
         };
 
         let free_size = DataPageContent::page_heap_size(PAGE_SIZE) as u16;
-        let pages: Vec<LazyPage> = page_types
-            .iter()
-            .enumerate()
-            .map(|(i, &page_type)| {
-                LazyPage::Loaded(Page {
-                    header: PageHeader {
-                        page_index: PageIndex(i as u32 + 1),
-                        page_type,
-                        next_page: next_unused_page,
-                        unknown1: 0,
-                        unknown2: 0,
-                        packed_row_counts: PackedRowCounts::default(),
-                        page_flags: PageFlags::new_data_page(),
-                        free_size,
-                        used_size: 0,
+        let mut pages: Vec<LazyPage> = Vec::with_capacity(NUM_TABLES as usize * 2);
+
+        for (i, &page_type) in page_types.iter().enumerate() {
+            let index_page_idx = PageIndex(i as u32 * 2 + 1);
+            let data_page_idx = PageIndex(i as u32 * 2 + 2);
+
+            // Index page for this table. CDJ hardware requires index pages to be present
+            // at the start of each table's page chain.
+            pages.push(LazyPage::Loaded(Page {
+                header: PageHeader {
+                    page_index: index_page_idx,
+                    page_type,
+                    next_page: data_page_idx,
+                    unknown1: 1,
+                    unknown2: 0,
+                    packed_row_counts: PackedRowCounts::default(),
+                    page_flags: PageFlags::new_index_page(),
+                    free_size: 0,
+                    used_size: 0,
+                },
+                content: PageContent::Index(IndexPageContent {
+                    header: IndexPageHeader {
+                        unknown_a: 0x1FFF,
+                        unknown_b: 0x1FFF,
+                        next_offset: 0,
+                        page_index: index_page_idx,
+                        next_page: data_page_idx,
+                        num_entries: 0,
+                        first_empty: 0x1FFF,
                     },
-                    content: PageContent::Data(DataPageContent {
-                        header: DataPageHeader {
-                            unknown5: 0,
-                            unknown_not_num_rows_large: 0,
-                            unknown6: 0,
-                            unknown7: 0,
-                        },
-                        row_groups: vec![],
-                        rows: BTreeMap::new(),
-                    }),
-                })
-            })
-            .collect();
+                    entries: vec![],
+                }),
+            }));
+
+            // Data page for this table (initially empty).
+            pages.push(LazyPage::Loaded(Page {
+                header: PageHeader {
+                    page_index: data_page_idx,
+                    page_type,
+                    next_page: next_unused_page,
+                    unknown1: 0,
+                    unknown2: 0,
+                    packed_row_counts: PackedRowCounts::default(),
+                    page_flags: PageFlags::new_data_page(),
+                    free_size,
+                    used_size: 0,
+                },
+                content: PageContent::Data(DataPageContent {
+                    header: DataPageHeader {
+                        unknown5: 0,
+                        unknown_not_num_rows_large: 0,
+                        unknown6: 0,
+                        unknown7: 0,
+                    },
+                    row_groups: vec![],
+                    rows: BTreeMap::new(),
+                }),
+            }));
+        }
 
         let mut db = Self {
             io,
