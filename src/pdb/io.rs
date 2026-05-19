@@ -250,9 +250,9 @@ impl<RW: Read + Write + Seek> Database<RW> {
                 let data_page = PageIndex(i as u32 * 2 + 2);
                 Table {
                     page_type,
-                    empty_candidate: 0,
+                    empty_candidate: data_page.0,
                     first_page: index_page,
-                    last_page: data_page,
+                    last_page: index_page,
                 }
             })
             .collect();
@@ -261,7 +261,7 @@ impl<RW: Read + Write + Seek> Database<RW> {
             page_size: PAGE_SIZE,
             num_tables: NUM_TABLES,
             next_unused_page,
-            unknown: 1,
+            unknown: 5,
             sequence: 1,
             tables,
         };
@@ -293,7 +293,8 @@ impl<RW: Read + Write + Seek> Database<RW> {
                         unknown_b: 0x1FFF,
                         next_offset: 0,
                         page_index: index_page_idx,
-                        next_page: data_page_idx,
+                        // Null sentinel for an empty-table index page.
+                        next_page: PageIndex(0x03FF_FFFF),
                         num_entries: 0,
                         first_empty: 0x1FFF,
                     },
@@ -344,12 +345,62 @@ impl<RW: Read + Write + Seek> Database<RW> {
         let bytes = row.heap_bytes_required(());
         let page_size = self.content.header.page_size;
 
-        // Get the last page index for this table type.
+        // Get the current table state.
+        let (first_page, last_page, empty_candidate) = {
+            let table = self
+                .content
+                .header
+                .find_table(page_type)
+                .ok_or_else(|| RekordcrateError::TableTypeNotPresent(page_type))?
+                .1;
+            (table.first_page, table.last_page, table.empty_candidate)
+        };
+
+        // If the table is empty (last_page == first_page = index-only state), promote the
+        // pre-allocated empty_candidate to be the first real data page and reserve a new one.
+        if last_page == first_page {
+            let ec_page_idx = PageIndex(empty_candidate);
+            let new_ec_idx = self.content.header.next_unused_page;
+            let after_new_ec = PageIndex(new_ec_idx.0 + 1);
+            let free_size = DataPageContent::page_heap_size(page_size) as u16;
+
+            let (_, table) = self.content.header.find_table_mut(page_type).unwrap();
+            table.last_page = ec_page_idx;
+            table.empty_candidate = new_ec_idx.0;
+            self.content.header.next_unused_page = after_new_ec;
+
+            // Physically allocate the new empty_candidate page.
+            self.content.pages.push(LazyPage::Loaded(Page {
+                header: PageHeader {
+                    page_index: new_ec_idx,
+                    page_type,
+                    next_page: after_new_ec,
+                    unknown1: 0,
+                    unknown2: 0,
+                    packed_row_counts: PackedRowCounts::default(),
+                    page_flags: PageFlags::new_data_page(),
+                    free_size,
+                    used_size: 0,
+                },
+                content: PageContent::Data(DataPageContent {
+                    header: DataPageHeader {
+                        unknown5: 0,
+                        unknown_not_num_rows_large: 0,
+                        unknown6: 0,
+                        unknown7: 0,
+                    },
+                    row_groups: vec![],
+                    rows: BTreeMap::new(),
+                }),
+            }));
+        }
+
+        // Get the last page index for this table type (now guaranteed to be a data page).
         let last_page_idx = self
             .content
             .header
             .find_table(page_type)
-            .ok_or_else(|| RekordcrateError::TableTypeNotPresent(page_type))?
+            .unwrap()
             .1
             .last_page;
 

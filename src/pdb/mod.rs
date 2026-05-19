@@ -167,7 +167,7 @@ impl TryFrom<u32> for PageIndex {
     type Error = PdbError;
 
     fn try_from(value: u32) -> Result<Self, Self::Error> {
-        if value < 0x03FF_FFFF {
+        if value <= 0x03FF_FFFF {
             Ok(Self(value))
         } else {
             Err(PdbError::InvalidPageIndex(value))
@@ -195,8 +195,7 @@ pub struct Table {
     pub page_type: PageType,
     /// Unknown field, maybe links to a chain of empty pages if the database is ever garbage
     /// collected (?).
-    #[allow(dead_code)]
-    empty_candidate: u32,
+    pub empty_candidate: u32,
     /// Index of the first page that belongs to this table.
     ///
     /// *Note:* The first page apparently does not contain any rows. If the table is non-empty, the
@@ -339,7 +338,7 @@ pub struct IndexPageHeader {
     pub next_offset: u16,
     /// Redundant page index.
     pub page_index: PageIndex,
-    /// Redundant next page index.
+    /// Redundant next page index, or `0x03FFFFFF` if this is an empty table index page.
     pub next_page: PageIndex,
     // Magic value `0x0000000003ffffff`.
     #[brw(magic = 0x0000_0000_03ff_ffffu64)]

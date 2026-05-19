@@ -47,13 +47,14 @@ fn test_create_header_fields() {
         header.next_unused_page,
         PageIndex::try_from(NUM_TABLES as u32 * 2 + 1).unwrap()
     );
-    // unknown=1 matches Rekordbox format; hardware may use this as an "initialized" flag.
-    assert_eq!(header.unknown, 1);
+    // unknown=5 matches rekordbox format; hardware uses this as a format version marker.
+    assert_eq!(header.unknown, 5);
     assert_eq!(header.sequence, 1);
 }
 
-/// Verifies that each table has an index page as first_page and a data page as last_page,
-/// following Rekordbox's page numbering scheme: index pages are odd, data pages are even.
+/// Verifies that each table has an index page as both first_page and last_page (empty table),
+/// with an empty_candidate pointing at the pre-allocated data page.
+/// Index pages are odd-numbered, data pages even-numbered (rekordbox convention).
 #[test]
 fn test_create_two_pages_per_table() {
     let db = create_empty_db();
@@ -71,18 +72,28 @@ fn test_create_two_pages_per_table() {
             i,
             expected_index_page
         );
+        // For an empty table, last_page == first_page (index page only).
         assert_eq!(
-            table.last_page, expected_data_page,
-            "table {}: last_page should be data page {:?}",
+            table.last_page, expected_index_page,
+            "table {}: last_page should be index page {:?} for an empty table",
+            i,
+            expected_index_page
+        );
+        // The pre-allocated empty_candidate is the data page immediately after the index page.
+        assert_eq!(
+            PageIndex::try_from(table.empty_candidate).unwrap(),
+            expected_data_page,
+            "table {}: empty_candidate should be data page {:?}",
             i,
             expected_data_page
         );
     }
 }
 
-/// Verifies that iterating a table's pages yields exactly one index page followed by one data page.
+/// Verifies that iterating an empty table's pages yields exactly one index page (no data page in
+/// the chain — the pre-allocated data page is outside the chain until the first row is inserted).
 #[test]
-fn test_create_page_chain_has_index_then_data() {
+fn test_create_page_chain_has_index_only() {
     let mut db = create_empty_db();
     let tables = db.get_header().tables.clone();
 
@@ -110,31 +121,13 @@ fn test_create_page_chain_has_index_then_data() {
             index_page.header.page_index
         );
 
-        // Second page must be the data page.
-        let data_page = page_iter
-            .next()
-            .expect("page iterator error")
-            .expect("expected a data page but got None");
-
-        assert_eq!(
-            data_page.header.page_index, table.last_page,
-            "table {}: last page index mismatch",
-            i
-        );
-        assert!(
-            !data_page.header.page_flags.is_index_page(),
-            "table {}: page {:?} should have is_index_page=false",
-            i,
-            data_page.header.page_index
-        );
-
-        // The chain must stop after exactly 2 pages.
+        // For an empty table, the chain must stop after the index page (last_page == first_page).
         assert!(
             page_iter
                 .next()
                 .expect("page iterator error")
                 .is_none(),
-            "table {}: expected exactly 2 pages in chain, but found more",
+            "table {}: expected exactly 1 page (index only) in chain, but found more",
             i
         );
     }
@@ -178,10 +171,11 @@ fn test_create_index_page_properties() {
             "table {}: index page unknown1 must be 1 (matches Rekordbox)",
             i
         );
-        // Index page's next_page must link to the data page.
+        // PageHeader.next_page on the index page must point to the pre-allocated ec page.
         assert_eq!(
-            index_page.header.next_page, table.last_page,
-            "table {}: index page next_page must point to data page",
+            index_page.header.next_page,
+            PageIndex::try_from(table.empty_candidate).unwrap(),
+            "table {}: index page next_page must point to ec page",
             i
         );
 
@@ -221,6 +215,13 @@ fn test_create_index_page_properties() {
             "table {}: index content page_index must match table first_page",
             i
         );
+        // IndexPageHeader.next_page must be the null sentinel (0x03FFFFFF) for an empty table.
+        assert_eq!(
+            index_content.header.next_page,
+            PageIndex::try_from(0x03FF_FFFFu32).unwrap(),
+            "table {}: index content next_page must be 0x03FFFFFF null sentinel",
+            i
+        );
         assert!(
             index_content.entries.is_empty(),
             "table {}: index page must have no entries",
@@ -229,56 +230,50 @@ fn test_create_index_page_properties() {
     }
 }
 
-/// Verifies data page properties: no is_index_page flag, full free space, matching page type.
+/// Verifies that the pre-allocated empty-candidate (ec) data page exists for each table and has
+/// the correct properties: not an index page, full free space, zero used space, matching type.
 #[test]
 fn test_create_data_page_properties() {
     let mut db = create_empty_db();
     let tables = db.get_header().tables.clone();
 
     for (i, table) in tables.iter().enumerate() {
-        let table_idx = TableIndex::from(i);
-        let mut page_iter = db
-            .iter_pages_for_table(table_idx)
-            .expect("failed to get page iterator");
+        let ec_page_idx = PageIndex::try_from(table.empty_candidate)
+            .expect("empty_candidate must be a valid page index");
 
-        // Skip the index page.
-        page_iter.next().expect("page iterator error");
-
-        let data_page = page_iter
-            .next()
-            .expect("page iterator error")
-            .expect("expected a data page");
+        let ec_page = db
+            .load_page(ec_page_idx)
+            .expect("failed to load ec page");
 
         assert!(
-            !data_page.header.page_flags.is_index_page(),
-            "table {}: data page must not have is_index_page flag",
+            !ec_page.header.page_flags.is_index_page(),
+            "table {}: ec page must not have is_index_page flag",
             i
         );
         assert_eq!(
-            data_page.header.free_size, DATA_PAGE_FREE_SIZE,
-            "table {}: empty data page must have full free space ({} bytes)",
+            ec_page.header.free_size, DATA_PAGE_FREE_SIZE,
+            "table {}: empty ec page must have full free space ({} bytes)",
             i,
             DATA_PAGE_FREE_SIZE
         );
         assert_eq!(
-            data_page.header.used_size, 0,
-            "table {}: empty data page must have used_size = 0",
+            ec_page.header.used_size, 0,
+            "table {}: empty ec page must have used_size = 0",
             i
         );
         assert_eq!(
-            data_page.header.page_type, table.page_type,
-            "table {}: data page type must match table page_type",
+            ec_page.header.page_type, table.page_type,
+            "table {}: ec page type must match table page_type",
             i
         );
         assert_eq!(
-            data_page.header.page_index, table.last_page,
-            "table {}: data page index must match table last_page",
+            ec_page.header.page_index, ec_page_idx,
+            "table {}: ec page index must match empty_candidate",
             i
         );
-        // Data page content must be an empty Data variant.
         assert!(
-            data_page.content.as_data().is_some(),
-            "table {}: data page must have Data content",
+            ec_page.content.as_data().is_some(),
+            "table {}: ec page must have Data content",
             i
         );
     }
