@@ -120,6 +120,17 @@ pub enum ValidationError {
         actual: PageIndex,
     },
 
+    /// A non-empty table's index page has `IndexPageHeader.next_page` != the first data page.
+    #[error(
+        "Table {table_index} (non-empty): IndexPageHeader.next_page should be first data page \
+         {expected:?}, but got {actual:?}"
+    )]
+    NonEmptyTableIndexNextPageWrong {
+        table_index: usize,
+        expected: PageIndex,
+        actual: PageIndex,
+    },
+
     /// An index page's `IndexPageHeader.page_index` does not match `PageHeader.page_index`.
     #[error(
         "Index page {page_index:?}: IndexPageHeader.page_index = {header_page_index:?} does not \
@@ -284,6 +295,26 @@ pub fn validate<R: Read + Seek>(db: &mut Database<R>) -> Vec<ValidationError> {
                     expected: ec_idx,
                     actual: last_page.header.next_page,
                 });
+            }
+
+            // The index page's inner IndexPageHeader.next_page must agree with the outer
+            // PageHeader.next_page (both should point to the first data page).
+            let index_page = match db.load_page(table.first_page) {
+                Ok(p) => p,
+                Err(e) => {
+                    errors.push(ValidationError::IoError(e));
+                    continue;
+                }
+            };
+            let expected_first_data = index_page.header.next_page;
+            if let Some(idx_content) = index_page.content.as_index() {
+                if idx_content.header.next_page != expected_first_data {
+                    errors.push(ValidationError::NonEmptyTableIndexNextPageWrong {
+                        table_index,
+                        expected: expected_first_data,
+                        actual: idx_content.header.next_page,
+                    });
+                }
             }
         }
     }

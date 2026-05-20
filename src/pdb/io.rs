@@ -324,7 +324,7 @@ impl<RW: Read + Write + Seek> Database<RW> {
                     page_index: data_page_idx,
                     page_type,
                     next_page: next_unused_page,
-                    unknown1: 0,
+                    unknown1: 1,
                     unknown2: 0,
                     packed_row_counts: PackedRowCounts::default(),
                     page_flags: PageFlags::new_data_page(),
@@ -441,7 +441,17 @@ impl<RW: Read + Write + Seek> Database<RW> {
         // If the table is empty (last_page == first_page = index-only state), promote the
         // pre-allocated empty_candidate to be the first real data page and reserve a new one.
         if last_page == first_page {
-            self.promote_ec_to_data_page(page_type, PageIndex(empty_candidate))?;
+            let promoted_idx = PageIndex(empty_candidate);
+            self.promote_ec_to_data_page(page_type, promoted_idx)?;
+
+            // Also update the inner IndexPageHeader.next_page so rekordbox can find the
+            // first data page (the sentinel is only correct for truly empty tables).
+            let index_slice = first_page.0 as usize - 1;
+            if let Some(LazyPage::Loaded(page)) = self.content.pages.get_mut(index_slice) {
+                if let PageContent::Index(ref mut idx) = page.content {
+                    idx.header.next_page = promoted_idx;
+                }
+            }
         }
 
         // Get the last page index for this table type (now guaranteed to be a data page).
