@@ -24,6 +24,7 @@ pub mod ext;
 pub mod io;
 pub mod offset_array;
 pub mod string;
+pub mod validation;
 
 use bitfields::{PackedRowCounts, PageFlags};
 use offset_array::{OffsetArrayContainer, OffsetArrayItems};
@@ -395,6 +396,40 @@ impl IndexPageContent {
 /// Helper struct to write empty index entries while reading nothing.
 struct EmptyIndexEntries(usize);
 
+/// Helper struct to write N zero bytes while reading nothing.
+///
+/// Used to pre-fill the page heap area with zeros before writing actual row data,
+/// ensuring the underlying buffer is extended to full page size even for empty pages.
+struct Zeros(u32);
+
+impl BinRead for Zeros {
+    type Args<'a> = ();
+
+    fn read_options<Reader>(_: &mut Reader, _: Endian, (): Self::Args<'_>) -> BinResult<Self>
+    where
+        Reader: Read + Seek,
+    {
+        Ok(Self(0))
+    }
+}
+
+impl BinWrite for Zeros {
+    type Args<'a> = ();
+
+    fn write_options<Writer>(
+        &self,
+        writer: &mut Writer,
+        _: Endian,
+        (): Self::Args<'_>,
+    ) -> BinResult<()>
+    where
+        Writer: Write + Seek,
+    {
+        writer.write_all(&vec![0u8; self.0 as usize])?;
+        Ok(())
+    }
+}
+
 impl BinRead for EmptyIndexEntries {
     type Args<'a> = ();
 
@@ -661,6 +696,21 @@ impl DataPageHeader {
 pub struct DataPageContent {
     /// The header of the data page.
     pub header: DataPageHeader,
+
+    // Pre-fill the heap area with zeros before writing row data.
+    //
+    // For writers backed by a Vec<u8> (e.g. Cursor<Vec<u8>>), a bare `seek_before`
+    // on `_dummy` below advances the cursor position without actually extending the
+    // underlying buffer.  The next page's write would then fill in the gap with
+    // zeros, except for the very last page in the file — which ends up truncated.
+    //
+    // By writing explicit zeros here (with restore_position) we always extend the
+    // buffer to the full heap size *before* row_groups and rows overwrite the
+    // relevant bytes with real content.
+    #[br(temp)]
+    #[bw(calc = Zeros(Self::page_heap_size(page_size)))]
+    #[brw(restore_position)]
+    _heap_zeros: Zeros,
 
     /// Row groups at the end of the page.
     // Seek to the end of the page as we read/write row groups backwards,

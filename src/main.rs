@@ -68,6 +68,15 @@ enum Commands {
         #[arg(long)]
         parse_unknown_tables: bool,
     },
+    /// Validate the structural integrity of a Pioneer Database (`.PDB`) file.
+    ValidatePDB {
+        /// File to validate.
+        #[arg(value_name = "PDB_FILE")]
+        path: PathBuf,
+        /// Database type: "plain" (export.pdb) or "ext" (exportExt.pdb). Tries to guess based on file name if not specified.
+        #[arg(long, value_name = "DB_TYPE", value_parser = ["plain", "ext"])]
+        db_type: Option<String>,
+    },
     /// Parse and dump a Pioneer Settings (`*SETTING.DAT`) file.
     DumpSetting {
         /// File to parse.
@@ -389,6 +398,22 @@ fn dump_dlp(path: &Path) -> rekordcrate::Result<()> {
     Ok(())
 }
 
+fn validate_pdb(path: &Path, db_type: DatabaseType) -> rekordcrate::Result<()> {
+    use rekordcrate::pdb::validation::validate;
+    let file = File::open(path)?;
+    let mut db = Database::open_non_persistent(file, db_type)?;
+    let errors = validate(&mut db);
+    if errors.is_empty() {
+        println!("No validation errors found.");
+    } else {
+        for error in &errors {
+            eprintln!("error: {error}");
+        }
+        eprintln!("{} validation error(s) found.", errors.len());
+    }
+    Ok(())
+}
+
 fn guess_db_type(path: &Path, db_type: Option<&str>) -> Option<DatabaseType> {
     let db_type_cli = db_type.map(|str| match str {
         "plain" => DatabaseType::Plain,
@@ -488,6 +513,13 @@ fn main() -> rekordcrate::Result<()> {
             dump_setting(path, setting_type)
         }
         Commands::DumpXML { path } => dump_xml(path),
+        Commands::ValidatePDB { path, db_type } => {
+            let db_type = match guess_db_type(path, db_type.as_deref()) {
+                Some(db_type) => db_type,
+                None => return Ok(()),
+            };
+            validate_pdb(path, db_type)
+        }
         #[cfg(feature = "device_library_plus")]
         Commands::DumpDLP { path } => dump_dlp(path),
     }

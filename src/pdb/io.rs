@@ -185,6 +185,22 @@ impl<R: Read + Seek> Database<R> {
             .map(|row| Ok(row.as_variant_mut().expect("unexpected row type"))))
     }
 
+    /// Returns the total size of the underlying IO in bytes.
+    ///
+    /// Saves and restores the current stream position.
+    pub fn file_size(&mut self) -> Result<u64, std::io::Error> {
+        let pos = self.io.seek(SeekFrom::Current(0))?;
+        let size = self.io.seek(SeekFrom::End(0))?;
+        self.io.seek(SeekFrom::Start(pos))?;
+        Ok(size)
+    }
+
+    /// Returns the database type.
+    #[must_use]
+    pub fn db_type(&self) -> DatabaseType {
+        self.db_type
+    }
+
     /// Returns a reference to the PDB header.
     #[must_use]
     pub fn get_header(&self) -> &Header {
@@ -337,6 +353,72 @@ impl<RW: Read + Write + Seek> Database<RW> {
         Ok(db)
     }
 
+    /// Promotes the empty-candidate page for a table to a real data page and allocates a
+    /// fresh empty-candidate after it.
+    ///
+    /// After promotion:
+    /// - `promoted_page.header.next_page` points to the new empty-candidate
+    /// - `table.last_page` is updated to the promoted page index
+    /// - `table.empty_candidate` is updated to the new empty-candidate index
+    /// - `header.next_unused_page` is advanced past the new empty-candidate
+    fn promote_ec_to_data_page(
+        &mut self,
+        page_type: PageType,
+        ec_idx: PageIndex,
+    ) -> RekordcrateResult<()> {
+        let page_size = self.content.header.page_size;
+        let new_ec_idx = self.content.header.next_unused_page;
+        let after_new_ec = PageIndex(new_ec_idx.0 + 1);
+        let free_size = DataPageContent::page_heap_size(page_size) as u16;
+
+        // Ensure the EC page is in memory, then point it at the new EC.
+        let ec_slice_idx = ec_idx.0 as usize - 1;
+        let needs_load = matches!(
+            self.content.pages.get(ec_slice_idx),
+            Some(LazyPage::NotLoaded)
+        );
+        if needs_load {
+            let mut page = read_page(&mut self.io, ec_idx, page_size, self.db_type)?;
+            page.header.next_page = new_ec_idx;
+            self.content.pages[ec_slice_idx] = LazyPage::Loaded(page);
+        } else if let Some(LazyPage::Loaded(page)) = self.content.pages.get_mut(ec_slice_idx) {
+            page.header.next_page = new_ec_idx;
+        }
+
+        // Update table metadata.
+        let (_, table) = self.content.header.find_table_mut(page_type).unwrap();
+        table.last_page = ec_idx;
+        table.empty_candidate = new_ec_idx.0;
+        self.content.header.next_unused_page = after_new_ec;
+
+        // Allocate the new empty-candidate page.
+        self.content.pages.push(LazyPage::Loaded(Page {
+            header: PageHeader {
+                page_index: new_ec_idx,
+                page_type,
+                next_page: after_new_ec,
+                unknown1: 0,
+                unknown2: 0,
+                packed_row_counts: PackedRowCounts::default(),
+                page_flags: PageFlags::new_data_page(),
+                free_size,
+                used_size: 0,
+            },
+            content: PageContent::Data(DataPageContent {
+                header: DataPageHeader {
+                    unknown5: 0,
+                    unknown_not_num_rows_large: 0,
+                    unknown6: 0,
+                    unknown7: 0,
+                },
+                row_groups: vec![],
+                rows: BTreeMap::new(),
+            }),
+        }));
+
+        Ok(())
+    }
+
     /// Inserts a row into the appropriate table based on its type.
     ///
     /// If the current last page for the row's table is full, a new page is allocated.
@@ -359,40 +441,7 @@ impl<RW: Read + Write + Seek> Database<RW> {
         // If the table is empty (last_page == first_page = index-only state), promote the
         // pre-allocated empty_candidate to be the first real data page and reserve a new one.
         if last_page == first_page {
-            let ec_page_idx = PageIndex(empty_candidate);
-            let new_ec_idx = self.content.header.next_unused_page;
-            let after_new_ec = PageIndex(new_ec_idx.0 + 1);
-            let free_size = DataPageContent::page_heap_size(page_size) as u16;
-
-            let (_, table) = self.content.header.find_table_mut(page_type).unwrap();
-            table.last_page = ec_page_idx;
-            table.empty_candidate = new_ec_idx.0;
-            self.content.header.next_unused_page = after_new_ec;
-
-            // Physically allocate the new empty_candidate page.
-            self.content.pages.push(LazyPage::Loaded(Page {
-                header: PageHeader {
-                    page_index: new_ec_idx,
-                    page_type,
-                    next_page: after_new_ec,
-                    unknown1: 0,
-                    unknown2: 0,
-                    packed_row_counts: PackedRowCounts::default(),
-                    page_flags: PageFlags::new_data_page(),
-                    free_size,
-                    used_size: 0,
-                },
-                content: PageContent::Data(DataPageContent {
-                    header: DataPageHeader {
-                        unknown5: 0,
-                        unknown_not_num_rows_large: 0,
-                        unknown6: 0,
-                        unknown7: 0,
-                    },
-                    row_groups: vec![],
-                    rows: BTreeMap::new(),
-                }),
-            }));
+            self.promote_ec_to_data_page(page_type, PageIndex(empty_candidate))?;
         }
 
         // Get the last page index for this table type (now guaranteed to be a data page).
@@ -420,49 +469,32 @@ impl<RW: Read + Write + Seek> Database<RW> {
             }
         }
 
-        // The page is full — allocate a new page.
-        let new_page_idx = self.content.header.next_unused_page;
-        let after_new_page_idx = PageIndex(new_page_idx.0 + 1);
-        let free_size = DataPageContent::page_heap_size(page_size) as u16;
+        // The page is full — promote the empty_candidate as the next data page and link
+        // the old last page to it.
+        let empty_candidate = self
+            .content
+            .header
+            .find_table(page_type)
+            .unwrap()
+            .1
+            .empty_candidate;
+        self.promote_ec_to_data_page(page_type, PageIndex(empty_candidate))?;
 
-        let new_page = Page {
-            header: PageHeader {
-                page_index: new_page_idx,
-                page_type,
-                next_page: after_new_page_idx,
-                unknown1: 0,
-                unknown2: 0,
-                packed_row_counts: PackedRowCounts::default(),
-                page_flags: PageFlags::new_data_page(),
-                free_size,
-                used_size: 0,
-            },
-            content: PageContent::Data(DataPageContent {
-                header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
-                    unknown6: 0,
-                    unknown7: 0,
-                },
-                row_groups: vec![],
-                rows: BTreeMap::new(),
-            }),
-        };
+        let new_last_page_idx = self
+            .content
+            .header
+            .find_table(page_type)
+            .unwrap()
+            .1
+            .last_page;
 
-        // Link the old last page to the new page.
+        // Link the old last page to the newly promoted data page.
         if let LazyPage::Loaded(old_page) = &mut self.content.pages[slice_index] {
-            old_page.header.next_page = new_page_idx;
+            old_page.header.next_page = new_last_page_idx;
         }
 
-        // Update the header and table metadata.
-        self.content.header.next_unused_page = after_new_page_idx;
-        if let Some((_, table)) = self.content.header.find_table_mut(page_type) {
-            table.last_page = new_page_idx;
-        }
-
-        // Push and insert into the new page.
-        self.content.pages.push(LazyPage::Loaded(new_page));
-        let new_slice_index = self.content.pages.len() - 1;
+        // Insert the row into the new last page.
+        let new_slice_index = new_last_page_idx.0 as usize - 1;
         if let LazyPage::Loaded(page) = &mut self.content.pages[new_slice_index] {
             let insert = page
                 .allocate_row(bytes)

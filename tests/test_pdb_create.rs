@@ -12,6 +12,7 @@
 use fallible_iterator::FallibleIterator;
 use rekordcrate::pdb::defaults::{insert_initial_content, insert_standard_keys};
 use rekordcrate::pdb::io::Database;
+use rekordcrate::pdb::validation::validate;
 use rekordcrate::pdb::*;
 use rekordcrate::util::TableIndex;
 use std::io::Cursor;
@@ -377,4 +378,89 @@ fn test_create_roundtrip_with_defaults() {
     assert_eq!(get_row_count::<Menu>(&mut db), 22);
     assert_eq!(get_row_count::<History>(&mut db), 1);
     assert_eq!(get_row_count::<Key>(&mut db), 24);
+}
+
+/// Verifies that a freshly created empty database passes all structural validation checks.
+#[test]
+fn test_validate_empty_database() {
+    let mut db = create_empty_db();
+    let errors = validate(&mut db);
+    assert!(
+        errors.is_empty(),
+        "empty database has validation errors: {errors:#?}"
+    );
+}
+
+/// Verifies that the file bytes of an empty database are an exact multiple of page_size.
+#[test]
+fn test_empty_database_file_size_is_multiple_of_page_size() {
+    let mut data = Vec::new();
+    {
+        let cursor = Cursor::new(&mut data);
+        Database::create(cursor, DatabaseType::Plain)
+            .expect("failed to create database")
+            .close()
+            .expect("failed to close");
+    }
+    assert_eq!(
+        data.len() % PAGE_SIZE as usize,
+        0,
+        "empty database file size {} is not a multiple of page_size {}",
+        data.len(),
+        PAGE_SIZE
+    );
+    // Each table gets 2 pages (index + EC), plus 1 header page.
+    let expected_size = PAGE_SIZE as usize * (NUM_TABLES * 2 + 1);
+    assert_eq!(
+        data.len(),
+        expected_size,
+        "expected file size {expected_size}, got {}",
+        data.len()
+    );
+}
+
+/// Verifies that a database with default content passes all structural validation checks.
+#[test]
+fn test_validate_database_with_defaults() {
+    let mut data = Vec::new();
+    {
+        let cursor = Cursor::new(&mut data);
+        let mut db =
+            Database::create(cursor, DatabaseType::Plain).expect("failed to create database");
+        insert_initial_content(&mut db, "2025-10-29".parse().unwrap(), "".parse().unwrap())
+            .expect("insert_initial_content failed");
+        insert_standard_keys(&mut db).expect("insert_standard_keys failed");
+        db.close().expect("failed to close");
+    }
+
+    let cursor = Cursor::new(data.as_slice());
+    let mut db = Database::open_non_persistent(cursor, DatabaseType::Plain)
+        .expect("failed to re-open database");
+    let errors = validate(&mut db);
+    assert!(
+        errors.is_empty(),
+        "database with default content has validation errors: {errors:#?}"
+    );
+}
+
+/// Verifies that a database with default content has a file size that is a multiple of page_size.
+#[test]
+fn test_database_with_defaults_file_size_is_multiple_of_page_size() {
+    let mut data = Vec::new();
+    {
+        let cursor = Cursor::new(&mut data);
+        let mut db =
+            Database::create(cursor, DatabaseType::Plain).expect("failed to create database");
+        insert_initial_content(&mut db, "2025-10-29".parse().unwrap(), "".parse().unwrap())
+            .expect("insert_initial_content failed");
+        insert_standard_keys(&mut db).expect("insert_standard_keys failed");
+        db.close().expect("failed to close");
+    }
+    assert_eq!(
+        data.len() % PAGE_SIZE as usize,
+        0,
+        "database file size {} is not a multiple of page_size {}",
+        data.len(),
+        PAGE_SIZE
+    );
 }
