@@ -54,9 +54,9 @@ pub enum PdbError {
     /// An invalid value was passed when creating a `PageIndex`.
     #[error("Invalid page index value: {0:#X}")]
     InvalidPageIndex(u32),
-    /// Invalid flags were passed when creating an `IndexEntry`.
-    #[error("Invalid index flags (expected max 3 bits): {0:#b}")]
-    InvalidIndexFlags(u8),
+    /// Invalid flags were passed when creating a `FreeSpaceEntry`.
+    #[error("Invalid free-space entry flags (expected max 3 bits): {0:#b}")]
+    InvalidFreeSpaceEntryFlags(u8),
 }
 
 /// The type of the database were looking at.
@@ -85,10 +85,11 @@ pub enum PageType {
     /// Placeholder table slot with an unrecognized page type.
     ///
     /// PDB files always contain exactly 20 table entries in a fixed layout. Several of those slots
-    /// (indices 9, 10, 14, 15, 18) hold page-type values that are not understood; they appear in
-    /// every known export but their contents are never populated. We preserve the raw u32 so that
-    /// the table header round-trips faithfully. Unlike [`Content::Unknown`](crate::anlz::Unknown)
-    /// in ANLZ files, these are intentionally serialized as part of any new database we create.
+    /// (indices 9, 10, 14, 15, 18) hold page-type values that are not fully understood. Table 18
+    /// is populated in every known plain export and therefore has a concrete row model here; the
+    /// remaining unknown tables still round-trip as opaque data. Unlike
+    /// [`Content::Unknown`](crate::anlz::Unknown) in ANLZ files, these page types are intentionally
+    /// serialized as part of any new database we create.
     Unknown(u32),
 }
 
@@ -224,8 +225,8 @@ pub struct Header {
     pub next_unused_page: PageIndex,
     /// Unknown field.
     pub unknown: u32,
-    /// Always incremented by at least one, sometimes by two or three.
-    pub sequence: u32,
+    /// The next page sequence number to assign when a page is edited.
+    pub next_page_sequence: u32,
     // The gap seems to be always zero.
     #[brw(magic = 0u32)]
     /// Each table is a linked list of pages containing rows of a particular type.
@@ -256,40 +257,40 @@ impl Header {
     }
 }
 
-/// An entry in an index page.
+/// An entry in a free-space / deleted-row tracking page.
 #[binrw]
 #[derive(PartialEq, Eq, Clone, Copy)]
 #[brw(little)]
-pub struct IndexEntry(u32);
+pub struct FreeSpaceEntry(u32);
 
-impl IndexEntry {
-    /// Size of the index entry in bytes.
+impl FreeSpaceEntry {
+    /// Size of the entry in bytes.
     pub const BINARY_SIZE: u32 = 4;
 }
 
-impl TryFrom<(PageIndex, u8)> for IndexEntry {
+impl TryFrom<(PageIndex, u8)> for FreeSpaceEntry {
     type Error = PdbError;
 
     fn try_from(value: (PageIndex, u8)) -> Result<Self, Self::Error> {
-        let (page_index, index_flags) = value;
-        if index_flags & 0b111 != index_flags {
-            return Err(PdbError::InvalidIndexFlags(index_flags));
+        let (page_index, entry_flags) = value;
+        if entry_flags & 0b111 != entry_flags {
+            return Err(PdbError::InvalidFreeSpaceEntryFlags(entry_flags));
         }
-        Ok(Self((page_index.0 << 3) | (index_flags & 0b111) as u32))
+        Ok(Self((page_index.0 << 3) | (entry_flags & 0b111) as u32))
     }
 }
 
-impl IndexEntry {
+impl FreeSpaceEntry {
     /// Returns bits 31-3 as a `PageIndex` which points to a page containing
-    /// data rows, with `page_flags=0x34` and same `page_type` as this page.
+    /// data rows with reclaimable space from deleted rows.
     pub fn page_index(&self) -> Result<PageIndex, PdbError> {
         PageIndex::try_from(self.0 >> 3)
     }
 
-    /// Returns the index flags from bits 2-0. Their meaning is currently
+    /// Returns the entry flags from bits 2-0. Their meaning is currently
     /// unknown.
     #[must_use]
-    pub fn index_flags(&self) -> u8 {
+    pub fn entry_flags(&self) -> u8 {
         (self.0 & 0b111) as u8
     }
 
@@ -299,53 +300,53 @@ impl IndexEntry {
         self.0 == 0x1FFF_FFF8
     }
 
-    /// Creates a new empty `IndexEntry`.
+    /// Creates a new empty `FreeSpaceEntry`.
     #[must_use]
     pub const fn empty() -> Self {
         Self(0x1FFF_FFF8)
     }
 }
 
-impl fmt::Debug for IndexEntry {
+impl fmt::Debug for FreeSpaceEntry {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         if self.is_empty() {
-            f.debug_struct("IndexEntry")
+            f.debug_struct("FreeSpaceEntry")
                 .field("is_empty", &self.is_empty())
                 .finish()
         } else {
-            f.debug_struct("IndexEntry")
+            f.debug_struct("FreeSpaceEntry")
                 .field("is_empty", &self.is_empty())
                 .field("page_index", &self.page_index().unwrap())
-                .field("index_flags", &self.index_flags())
+                .field("entry_flags", &self.entry_flags())
                 .finish()
         }
     }
 }
 
-/// The header of the index-containing part of a page.
+/// The header of the free-space / deleted-row tracking part of a page.
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct IndexPageHeader {
+pub struct FreeSpacePageHeader {
     /// Unknown field, usually `0x1fff` or `0x0001`.
     pub unknown_a: u16,
     /// Unknown field, usually `0x1fff` or `0x0000`.
     pub unknown_b: u16,
     // Magic value `0x03ec`.
     #[brw(magic = 0x03ecu16)]
-    /// Offset where the next index entry will be written from the beginning
+    /// Offset where the next entry will be written from the beginning
     /// of the entries array, i.e. if this is 4 it means the next entry should
     /// be written at byte `entries+4*4`. We still do not know why this value
     /// is sometimes different than num_entries.
     pub next_offset: u16,
     /// Redundant page index.
     pub page_index: PageIndex,
-    /// Redundant next page index, or `0x03FFFFFF` if this is an empty table index page.
+    /// Redundant next page index, or `0x03FFFFFF` if this is an empty table free-space page.
     pub next_page: PageIndex,
     // Magic value `0x0000000003ffffff`.
     #[brw(magic = 0x0000_0000_03ff_ffffu64)]
-    /// Number of index entries in this page.
+    /// Number of free-space entries in this page.
     pub num_entries: u16,
-    /// Points to the first empty index entry, or `0x1fff` if none.
+    /// Points to the first empty entry slot, or `0x1fff` if none.
     ///
     /// In real databases, this has been found to be one of three things:
     /// 1. The same value as `num_entries`.
@@ -355,46 +356,47 @@ pub struct IndexPageHeader {
     pub first_empty: u16,
 }
 
-impl IndexPageHeader {
-    /// Size of the index page header in bytes.
+impl FreeSpacePageHeader {
+    /// Size of the free-space page header in bytes.
     pub const BINARY_SIZE: u32 = 28;
 }
 
-/// The content of an index page.
+/// The content of a free-space / deleted-row tracking page.
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
 #[br(little)]
 #[bw(little, import { page_size: u32 })]
-pub struct IndexPageContent {
-    /// The header of the index page.
-    pub header: IndexPageHeader,
+pub struct FreeSpacePageContent {
+    /// The header of the free-space page.
+    pub header: FreeSpacePageHeader,
 
-    /// The index entries.
+    /// The free-space entries.
     #[br(count = header.num_entries)]
-    pub entries: Vec<IndexEntry>,
+    pub entries: Vec<FreeSpaceEntry>,
 
     // Write empty entries to pad out the rest of the page, except the last
     // 20 bytes which are zeros instead.
     #[br(temp)]
-    #[bw(calc = EmptyIndexEntries(
+    #[bw(calc = EmptyFreeSpaceEntries(
         Self::total_entries(page_size) - usize::from(header.num_entries)
     ))]
     #[bw(pad_after = 20)]
-    _empty_entries: EmptyIndexEntries,
+    _empty_entries: EmptyFreeSpaceEntries,
 }
 
-impl IndexPageContent {
+impl FreeSpacePageContent {
     fn total_entries(page_size: u32) -> usize {
-        // The last 20 bytes in an index page are zeros.
-        let entries_space = page_size - PageHeader::BINARY_SIZE - IndexPageHeader::BINARY_SIZE - 20;
-        (entries_space / IndexEntry::BINARY_SIZE)
+        // The last 20 bytes in a free-space page are zeros.
+        let entries_space =
+            page_size - PageHeader::BINARY_SIZE - FreeSpacePageHeader::BINARY_SIZE - 20;
+        (entries_space / FreeSpaceEntry::BINARY_SIZE)
             .try_into()
             .unwrap()
     }
 }
 
-/// Helper struct to write empty index entries while reading nothing.
-struct EmptyIndexEntries(usize);
+/// Helper struct to write empty free-space entries while reading nothing.
+struct EmptyFreeSpaceEntries(usize);
 
 /// Helper struct to write N zero bytes while reading nothing.
 ///
@@ -430,7 +432,7 @@ impl BinWrite for Zeros {
     }
 }
 
-impl BinRead for EmptyIndexEntries {
+impl BinRead for EmptyFreeSpaceEntries {
     type Args<'a> = ();
 
     fn read_options<Reader>(_: &mut Reader, _: Endian, (): Self::Args<'_>) -> BinResult<Self>
@@ -441,7 +443,7 @@ impl BinRead for EmptyIndexEntries {
     }
 }
 
-impl BinWrite for EmptyIndexEntries {
+impl BinWrite for EmptyFreeSpaceEntries {
     type Args<'a> = ();
 
     fn write_options<Writer>(
@@ -453,7 +455,7 @@ impl BinWrite for EmptyIndexEntries {
     where
         Writer: Write + Seek,
     {
-        const EMPTY: IndexEntry = IndexEntry::empty();
+        const EMPTY: FreeSpaceEntry = FreeSpaceEntry::empty();
         for _ in 0..self.0 {
             EMPTY.write_options(writer, endian, ())?;
         }
@@ -470,15 +472,15 @@ impl BinWrite for EmptyIndexEntries {
 #[bw(little, import { page_size: u32 })]
 pub enum PageContent {
     /// The page contains data rows.
-    #[br(pre_assert(!header.page_flags.is_index_page()))]
+    #[br(pre_assert(!header.page_flags.is_free_space_page()))]
     Data(
         #[br(args { page_size, page_header: header })]
         #[bw(args { page_size })]
         DataPageContent,
     ),
-    /// The page is an index page.
-    #[br(pre_assert(header.page_flags.is_index_page()))]
-    Index(#[bw(args { page_size })] IndexPageContent),
+    /// The page tracks free space caused by deleted rows.
+    #[br(pre_assert(header.page_flags.is_free_space_page()))]
+    FreeSpace(#[bw(args { page_size })] FreeSpacePageContent),
 }
 
 impl PageContent {
@@ -509,29 +511,29 @@ impl PageContent {
         }
     }
 
-    /// Returns the index content of the page if it is an index page.
+    /// Returns the free-space content of the page if it is a free-space page.
     #[must_use]
-    pub fn into_index(self) -> Option<IndexPageContent> {
+    pub fn into_free_space(self) -> Option<FreeSpacePageContent> {
         match self {
-            PageContent::Index(index) => Some(index),
+            PageContent::FreeSpace(index) => Some(index),
             _ => None,
         }
     }
 
-    /// Returns a reference to the index content of the page if it is an index page.
+    /// Returns a reference to the free-space content of the page if it is a free-space page.
     #[must_use]
-    pub fn as_index(&self) -> Option<&IndexPageContent> {
+    pub fn as_free_space(&self) -> Option<&FreeSpacePageContent> {
         match self {
-            PageContent::Index(index) => Some(index),
+            PageContent::FreeSpace(index) => Some(index),
             _ => None,
         }
     }
 
-    /// Returns a mutable reference to the index content of the page if it is an index page.
+    /// Returns a mutable reference to the free-space content of the page if it is a free-space page.
     #[must_use]
-    pub fn as_index_mut(&mut self) -> Option<&mut IndexPageContent> {
+    pub fn as_free_space_mut(&mut self) -> Option<&mut FreeSpacePageContent> {
         match self {
-            PageContent::Index(index) => Some(index),
+            PageContent::FreeSpace(index) => Some(index),
             _ => None,
         }
     }
@@ -559,9 +561,8 @@ pub struct PageHeader {
     /// If this page is the last one of that type, the page index stored in the field will point
     /// past the end of the file.
     pub next_page: PageIndex,
-    /// Unknown field.
-    /// Appears to be a number between 1 and ~2500.
-    pub unknown1: u32,
+    /// Sequence number copied from [`Header::next_page_sequence`] when this page was last edited.
+    pub page_sequence: u32,
     /// Unknown field.
     /// Appears to always be zero.
     pub unknown2: u32,
@@ -615,7 +616,7 @@ impl Page {
     /// the Row once we know we can insert it, avoiding unnecessary copies.
     pub fn allocate_row<'a>(&'a mut self, bytes: u16) -> Option<impl FnOnce(Row) + 'a> {
         match self.content {
-            PageContent::Index(_) => None,
+            PageContent::FreeSpace(_) => None,
             PageContent::Data(ref mut dpc) => {
                 // Always align rows to 4 bytes.
                 let bytes = bytes.next_multiple_of(4);
@@ -664,15 +665,12 @@ impl Page {
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct DataPageHeader {
-    /// Unknown field.
-    /// Often 1 or 0x1fff; also observed: 8, 27, 22, 17, 2.
-    ///
-    /// According to [@flesniak](https://github.com/flesniak):
-    /// > (0->1: 2)
-    pub unknown5: u16,
-    /// Unknown field related to the number of rows in the table,
-    /// but not equal to it.
-    pub unknown_not_num_rows_large: u16,
+    /// Number of rows touched by the most recent transaction on this page,
+    /// or `0x1fff` if the transaction failed.
+    pub transaction_row_count: u16,
+    /// Index of the first row touched by the most recent transaction on this
+    /// page, or `0x1fff` if the transaction failed.
+    pub transaction_row_index: u16,
     /// Unknown field (usually zero).
     pub unknown6: u16,
     /// Unknown field (usually zero).
@@ -808,14 +806,8 @@ pub struct RowGroup {
     pub row_offsets: [u16; Self::MAX_ROW_COUNT],
     /// A bit mask that indicates which rows in this group are actually present.
     pub row_presence_flags: u16,
-    /// Unknown field.
-    /// Often zero, sometimes a multiple of 2, rarely something else.
-    /// When a multiple of 2, the set bit often aligns with the last present row
-    /// in the group, so maybe this is a bitset like the flags.
-    ///
-    /// E.g. for a full Artist rowgroup, this is usually zero.
-    /// For the last Artist rowgroup in the page with flags 0x003f, this is often 0x0020.
-    pub unknown: u16,
+    /// Bit mask of rows touched by the most recent transaction on this row group.
+    pub transaction_row_flags: u16,
 
     // Seek to the start of the row group to prepare for reading the next one.
     #[br(temp)]
@@ -835,7 +827,7 @@ impl RowGroup {
         Self {
             row_offsets: [0; Self::MAX_ROW_COUNT],
             row_presence_flags: 0,
-            unknown: 0,
+            transaction_row_flags: 0,
         }
     }
 
@@ -887,7 +879,7 @@ impl Default for RowGroup {
 
 impl PartialEq for RowGroup {
     fn eq(&self, other: &Self) -> bool {
-        self.unknown == other.unknown
+        self.transaction_row_flags == other.transaction_row_flags
             && self.present_rows_offsets().eq(other.present_rows_offsets())
     }
 }
@@ -1119,7 +1111,7 @@ impl Album {
     /// Create a new album row with the given name and optional album artist.
     pub fn new(name: DeviceSQLString, artist_id: ArtistId) -> Self {
         Self {
-            subtype: Subtype(0x60),
+            subtype: Subtype(0x80),
             index_shift: 0,
             unknown2: 0,
             artist_id,
@@ -1945,6 +1937,30 @@ impl TrackStrings {
             file_path,
         }
     }
+
+    /// Apply the default string values Rekordbox writes for exported tracks.
+    pub fn set_export_defaults(&mut self) {
+        self.unknown_string2 = "1".parse().unwrap();
+        self.unknown_string3 = "1".parse().unwrap();
+        self.autoload_hotcues = "ON".parse().unwrap();
+    }
+
+    /// Set the track's added-to-library date (`YYYY-MM-DD`).
+    pub fn set_date_added(&mut self, date_added: DeviceSQLString) {
+        self.date_added = date_added;
+    }
+
+    /// Return the track's added-to-library date string.
+    #[must_use]
+    pub fn date_added(&self) -> &DeviceSQLString {
+        &self.date_added
+    }
+
+    /// Return the exported autoload-hotcues setting.
+    #[must_use]
+    pub fn autoload_hotcues(&self) -> &DeviceSQLString {
+        &self.autoload_hotcues
+    }
 }
 
 /// Contains the album name, along with an ID of the corresponding artist.
@@ -2228,6 +2244,69 @@ impl Menu {
     }
 }
 
+/// Fixed 8-byte rows found in `Unknown(18)` pages of every known plain export.
+///
+/// The first two fields line up with `ColumnEntry.id` values and a stable ordering across the
+/// fixture set, so we preserve them as `u16`s instead of treating the row as two opaque `u32`s.
+/// The final two words remain only partially understood.
+#[binrw]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[brw(little)]
+pub struct Unknown18Row {
+    /// Matches a `ColumnEntry.id` in all known exports.
+    pub column_id: u16,
+    /// Stable ordering value within the fixed table-18 seed rows.
+    pub sort_order: u16,
+    /// Opaque tag value; known exports use `0x0001`, `0x0100`, `0x0200`, etc.
+    pub tag: u16,
+    /// Reserved / unknown trailing word. Always zero in known exports.
+    pub reserved: u16,
+}
+
+impl Unknown18Row {
+    /// Create a new table-18 row.
+    pub const fn new(column_id: u16, sort_order: u16, tag: u16, reserved: u16) -> Self {
+        Self {
+            column_id,
+            sort_order,
+            tag,
+            reserved,
+        }
+    }
+}
+
+impl PageHeapObject for Unknown18Row {
+    type Args<'a> = ();
+    fn heap_bytes_required(&self, _: ()) -> u16 {
+        [
+            self.column_id.heap_bytes_required(()),
+            self.sort_order.heap_bytes_required(()),
+            self.tag.heap_bytes_required(()),
+            self.reserved.heap_bytes_required(()),
+        ]
+        .iter()
+        .sum()
+    }
+}
+
+impl RowVariant for Unknown18Row {
+    const PAGE_TYPE: PageType = PageType::Unknown(18);
+
+    fn from_row(row: &Row) -> Option<&Self> {
+        match row {
+            Row::Unknown18(row) => Some(row),
+            _ => None,
+        }
+    }
+
+    fn from_row_mut(row: &mut Row) -> Option<&mut Self> {
+        match row {
+            Row::Unknown18(row) => Some(row),
+            _ => None,
+        }
+    }
+}
+
 /// A table row contains the actual data.
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -2374,8 +2453,11 @@ pub enum Row {
         }))]
         ExtRow,
     ),
+    /// Typed rows for the fixed payload found in plain-export table 18.
+    #[br(pre_assert(page_type == PageType::Unknown(18)))]
+    Unknown18(Unknown18Row),
     /// The row format (and also its size) is unknown, which means it can't be parsed.
-    #[br(pre_assert(matches!(page_type, PageType::Unknown(_))))]
+    #[br(pre_assert(matches!(page_type, PageType::Unknown(_)) && page_type != PageType::Unknown(18)))]
     Unknown,
 }
 
@@ -2396,6 +2478,7 @@ impl Row {
         match self {
             Row::Plain(plain_row) => PageType::Plain(plain_row.page_type()),
             Row::Ext(ext_row) => PageType::Ext(ext_row.page_type()),
+            Row::Unknown18(_) => PageType::Unknown(18),
             Row::Unknown => panic!("Unable to determine page type for unknown row"),
         }
     }
@@ -2407,6 +2490,7 @@ impl PageHeapObject for Row {
         match self {
             Row::Plain(plain_row) => plain_row.heap_bytes_required(()),
             Row::Ext(ext_row) => ext_row.heap_bytes_required(()),
+            Row::Unknown18(row) => row.heap_bytes_required(()),
             Row::Unknown => panic!("Unable to determine required bytes for unknown row type"),
         }
     }

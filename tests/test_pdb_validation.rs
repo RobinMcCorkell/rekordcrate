@@ -46,34 +46,16 @@ pdb_validation_test!(
     validate_complete_export_device_library_plus,
     "complete_export/device_library_plus/PIONEER/rekordbox/export.pdb"
 );
-pdb_validation_test!(
-    validate_incremental_000,
-    "incremental/000/export.pdb"
-);
-pdb_validation_test!(
-    validate_incremental_016,
-    "incremental/016/export.pdb"
-);
-pdb_validation_test!(
-    validate_incremental_063,
-    "incremental/063/export.pdb"
-);
+pdb_validation_test!(validate_incremental_000, "incremental/000/export.pdb");
+pdb_validation_test!(validate_incremental_016, "incremental/016/export.pdb");
+pdb_validation_test!(validate_incremental_063, "incremental/063/export.pdb");
 pdb_validation_test!(
     validate_incremental_063_removed_one,
     "incremental/063-removed-one/export.pdb"
 );
-pdb_validation_test!(
-    validate_incremental_100,
-    "incremental/100/export.pdb"
-);
-pdb_validation_test!(
-    validate_incremental_196,
-    "incremental/196/export.pdb"
-);
-pdb_validation_test!(
-    validate_incremental_292,
-    "incremental/292/export.pdb"
-);
+pdb_validation_test!(validate_incremental_100, "incremental/100/export.pdb");
+pdb_validation_test!(validate_incremental_196, "incremental/196/export.pdb");
+pdb_validation_test!(validate_incremental_292, "incremental/292/export.pdb");
 pdb_validation_test!(
     validate_incremental_292_removed_one,
     "incremental/292-removed-one/export.pdb"
@@ -86,7 +68,4 @@ pdb_validation_test!(
     validate_incremental_big_009,
     "incremental-big/009/export.pdb"
 );
-pdb_validation_test!(
-    validate_pdb_num_rows,
-    "pdb/num_rows/export.pdb"
-);
+pdb_validation_test!(validate_pdb_num_rows, "pdb/num_rows/export.pdb");

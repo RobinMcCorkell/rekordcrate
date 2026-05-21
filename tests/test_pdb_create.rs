@@ -48,12 +48,21 @@ fn test_create_header_fields() {
         header.next_unused_page,
         PageIndex::try_from(NUM_TABLES as u32 * 2 + 1).unwrap()
     );
-    // unknown=5 matches rekordbox format; hardware uses this as a format version marker.
     assert_eq!(header.unknown, 5);
-    assert_eq!(header.sequence, 1);
+    assert_eq!(header.next_page_sequence, 1);
 }
 
-/// Verifies that each table has an index page as both first_page and last_page (empty table),
+#[test]
+fn test_insert_initial_content_updates_sequence_like_empty_export() {
+    let cursor = Cursor::new(Vec::new());
+    let mut db = Database::create(cursor, DatabaseType::Plain).expect("failed to create database");
+    insert_initial_content(&mut db, "2025-10-29".parse().unwrap(), "".parse().unwrap())
+        .expect("insert_initial_content failed");
+
+    assert_eq!(db.get_header().next_page_sequence, 6);
+}
+
+/// Verifies that each table has an free-space page as both first_page and last_page (empty table),
 /// with an empty_candidate pointing at the pre-allocated data page.
 /// Index pages are odd-numbered, data pages even-numbered (rekordbox convention).
 #[test]
@@ -69,18 +78,16 @@ fn test_create_two_pages_per_table() {
 
         assert_eq!(
             table.first_page, expected_index_page,
-            "table {}: first_page should be index page {:?}",
-            i,
-            expected_index_page
+            "table {}: first_page should be free-space page {:?}",
+            i, expected_index_page
         );
-        // For an empty table, last_page == first_page (index page only).
+        // For an empty table, last_page == first_page (free-space page only).
         assert_eq!(
             table.last_page, expected_index_page,
-            "table {}: last_page should be index page {:?} for an empty table",
-            i,
-            expected_index_page
+            "table {}: last_page should be free-space page {:?} for an empty table",
+            i, expected_index_page
         );
-        // The pre-allocated empty_candidate is the data page immediately after the index page.
+        // The pre-allocated empty_candidate is the data page immediately after the free-space page.
         assert_eq!(
             PageIndex::try_from(table.empty_candidate).unwrap(),
             expected_data_page,
@@ -91,10 +98,10 @@ fn test_create_two_pages_per_table() {
     }
 }
 
-/// Verifies that iterating an empty table's pages yields exactly one index page (no data page in
+/// Verifies that iterating an empty table's pages yields exactly one free-space page (no data page in
 /// the chain — the pre-allocated data page is outside the chain until the first row is inserted).
 #[test]
-fn test_create_page_chain_has_index_only() {
+fn test_create_page_chain_has_free_space_only() {
     let mut db = create_empty_db();
     let tables = db.get_header().tables.clone();
 
@@ -104,11 +111,11 @@ fn test_create_page_chain_has_index_only() {
             .iter_pages_for_table(table_idx)
             .expect("failed to get page iterator");
 
-        // First page must be the index page.
+        // First page must be the free-space page.
         let index_page = page_iter
             .next()
             .expect("page iterator error")
-            .expect("expected an index page but got None");
+            .expect("expected an free-space page but got None");
 
         assert_eq!(
             index_page.header.page_index, table.first_page,
@@ -116,25 +123,22 @@ fn test_create_page_chain_has_index_only() {
             i
         );
         assert!(
-            index_page.header.page_flags.is_index_page(),
-            "table {}: page {:?} should have is_index_page=true",
+            index_page.header.page_flags.is_free_space_page(),
+            "table {}: page {:?} should have is_free_space_page=true",
             i,
             index_page.header.page_index
         );
 
-        // For an empty table, the chain must stop after the index page (last_page == first_page).
+        // For an empty table, the chain must stop after the free-space page (last_page == first_page).
         assert!(
-            page_iter
-                .next()
-                .expect("page iterator error")
-                .is_none(),
+            page_iter.next().expect("page iterator error").is_none(),
             "table {}: expected exactly 1 page (index only) in chain, but found more",
             i
         );
     }
 }
 
-/// Verifies the properties of index pages that CDJ hardware requires: is_index_page flag,
+/// Verifies the properties of free-space pages that CDJ hardware requires: is_free_space_page flag,
 /// zero free/used space, and correct links into the data page.
 #[test]
 fn test_create_index_page_properties() {
@@ -150,89 +154,89 @@ fn test_create_index_page_properties() {
         let index_page = page_iter
             .next()
             .expect("page iterator error")
-            .expect("expected an index page");
+            .expect("expected an free-space page");
 
         assert!(
-            index_page.header.page_flags.is_index_page(),
-            "table {}: index page must have is_index_page flag set",
+            index_page.header.page_flags.is_free_space_page(),
+            "table {}: free-space page must have is_free_space_page flag set",
             i
         );
         assert_eq!(
             index_page.header.free_size, 0,
-            "table {}: index page free_size must be 0 (no row data)",
+            "table {}: free-space page free_size must be 0 (no row data)",
             i
         );
         assert_eq!(
             index_page.header.used_size, 0,
-            "table {}: index page used_size must be 0",
+            "table {}: free-space page used_size must be 0",
             i
         );
         assert_eq!(
-            index_page.header.unknown1, 1,
-            "table {}: index page unknown1 must be 1 (matches Rekordbox)",
+            index_page.header.page_sequence, 1,
+            "table {}: free-space page sequence must be 1 (matches Rekordbox)",
             i
         );
-        // PageHeader.next_page on the index page must point to the pre-allocated ec page.
+        // PageHeader.next_page on the free-space page must point to the pre-allocated ec page.
         assert_eq!(
             index_page.header.next_page,
             PageIndex::try_from(table.empty_candidate).unwrap(),
-            "table {}: index page next_page must point to ec page",
+            "table {}: free-space page next_page must point to ec page",
             i
         );
 
-        // Verify IndexPageContent has the expected sentinel values for an empty index.
+        // Verify FreeSpacePageContent has the expected sentinel values for an empty table.
         let index_content = index_page
             .content
-            .as_index()
-            .expect("index page must have Index content");
+            .as_free_space()
+            .expect("free-space page must have Index content");
 
         assert_eq!(
             index_content.header.unknown_a, 0x1FFF,
-            "table {}: index content unknown_a must be 0x1FFF",
+            "table {}: free-space content unknown_a must be 0x1FFF",
             i
         );
         assert_eq!(
             index_content.header.unknown_b, 0x1FFF,
-            "table {}: index content unknown_b must be 0x1FFF",
+            "table {}: free-space content unknown_b must be 0x1FFF",
             i
         );
         assert_eq!(
             index_content.header.next_offset, 0,
-            "table {}: index content next_offset must be 0",
+            "table {}: free-space content next_offset must be 0",
             i
         );
         assert_eq!(
             index_content.header.num_entries, 0,
-            "table {}: index content num_entries must be 0",
+            "table {}: free-space content num_entries must be 0",
             i
         );
         assert_eq!(
             index_content.header.first_empty, 0x1FFF,
-            "table {}: index content first_empty must be 0x1FFF (empty sentinel)",
+            "table {}: free-space content first_empty must be 0x1FFF (empty sentinel)",
             i
         );
         assert_eq!(
             index_content.header.page_index, table.first_page,
-            "table {}: index content page_index must match table first_page",
+            "table {}: free-space content page_index must match table first_page",
             i
         );
-        // IndexPageHeader.next_page must be the null sentinel (0x03FFFFFF) for an empty table.
+        // FreeSpacePageHeader.next_page must be the null sentinel (0x03FFFFFF) for an empty table.
         assert_eq!(
             index_content.header.next_page,
             PageIndex::try_from(0x03FF_FFFFu32).unwrap(),
-            "table {}: index content next_page must be 0x03FFFFFF null sentinel",
+            "table {}: free-space content next_page must be 0x03FFFFFF null sentinel",
             i
         );
         assert!(
             index_content.entries.is_empty(),
-            "table {}: index page must have no entries",
+            "table {}: free-space page must have no entries",
             i
         );
     }
 }
 
 /// Verifies that the pre-allocated empty-candidate (ec) data page exists for each table and has
-/// the correct properties: not an index page, full free space, zero used space, matching type.
+/// the correct properties: not an free-space page, full free space, zero used space, matching type.
 #[test]
 fn test_create_data_page_properties() {
     let mut db = create_empty_db();
@@ -242,20 +246,17 @@ fn test_create_data_page_properties() {
         let ec_page_idx = PageIndex::try_from(table.empty_candidate)
             .expect("empty_candidate must be a valid page index");
 
-        let ec_page = db
-            .load_page(ec_page_idx)
-            .expect("failed to load ec page");
+        let ec_page = db.load_page(ec_page_idx).expect("failed to load ec page");
 
         assert!(
-            !ec_page.header.page_flags.is_index_page(),
-            "table {}: ec page must not have is_index_page flag",
+            !ec_page.header.page_flags.is_free_space_page(),
+            "table {}: ec page must not have is_free_space_page flag",
             i
         );
         assert_eq!(
             ec_page.header.free_size, DATA_PAGE_FREE_SIZE,
             "table {}: empty ec page must have full free space ({} bytes)",
-            i,
-            DATA_PAGE_FREE_SIZE
+            i, DATA_PAGE_FREE_SIZE
         );
         assert_eq!(
             ec_page.header.used_size, 0,
@@ -302,7 +303,7 @@ fn test_create_all_tables_empty() {
     assert_eq!(get_row_count::<Track>(&mut db), 0);
 }
 
-/// Verifies that after inserting default content, rows land in data pages (not index pages),
+/// Verifies that after inserting default content, rows land in data pages (not free-space pages),
 /// and the page chain structure is preserved.
 #[test]
 fn test_create_inserts_go_to_data_pages() {
@@ -324,22 +325,22 @@ fn test_create_inserts_go_to_data_pages() {
             .iter_pages_for_table(table_idx)
             .expect("failed to get page iterator");
 
-        // The first page in the chain must still be the index page.
+        // The first page in the chain must still be the free-space page.
         let first_page = page_iter
             .next()
             .expect("page iterator error")
             .expect("expected first page");
         assert!(
-            first_page.header.page_flags.is_index_page(),
-            "table {}: first page must remain an index page after inserts",
+            first_page.header.page_flags.is_free_space_page(),
+            "table {}: first page must remain an free-space page after inserts",
             i
         );
 
         // All subsequent pages must be data pages.
         while let Some(page) = page_iter.next().expect("page iterator error") {
             assert!(
-                !page.header.page_flags.is_index_page(),
-                "table {}: page {:?} must be a data page (not index page) after inserts",
+                !page.header.page_flags.is_free_space_page(),
+                "table {}: page {:?} must be a data page (not free-space page) after inserts",
                 i,
                 page.header.page_index
             );
@@ -409,8 +410,8 @@ fn test_empty_database_file_size_is_multiple_of_page_size() {
         data.len(),
         PAGE_SIZE
     );
-    // Each table gets 2 pages (index + EC), plus 1 header page.
-    let expected_size = PAGE_SIZE as usize * (NUM_TABLES * 2 + 1);
+    // Unwritten data pages still leave sparse gaps up to the last written free-space page (39).
+    let expected_size = PAGE_SIZE as usize * (NUM_TABLES * 2);
     assert_eq!(
         data.len(),
         expected_size,

@@ -20,7 +20,7 @@ fn empty_header() {
         num_tables: 0,
         next_unused_page: PageIndex::try_from(1).unwrap(),
         unknown: 0,
-        sequence: 1,
+        next_page_sequence: 1,
         tables: vec![],
     };
     test_roundtrip(
@@ -38,7 +38,7 @@ fn demo_tracks_header() {
         num_tables: 20,
         next_unused_page: PageIndex::try_from(51).unwrap(),
         unknown: 5,
-        sequence: 34,
+        next_page_sequence: 34,
         tables: [
             Table {
                 page_type: PageType::Plain(PlainPageType::Tracks),
@@ -492,7 +492,7 @@ fn track_page() {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x054c, 0x03fc, 0x02ac, 0x0150, 0x0000,
         ],
         row_presence_flags: 0x001f,
-        unknown: 0x0010,
+        transaction_row_flags: 0x0010,
     }];
 
     let rows: BTreeMap<u16, Row> = vec![
@@ -860,7 +860,7 @@ fn track_page() {
             page_index: PageIndex::try_from(2).unwrap(),
             page_type: PageType::Plain(PlainPageType::Tracks),
             next_page: PageIndex::try_from(46).unwrap(),
-            unknown1: 12,
+            page_sequence: 12,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(5)
@@ -871,8 +871,8 @@ fn track_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 4,
+                transaction_row_count: 1,
+                transaction_row_index: 4,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -899,12 +899,12 @@ fn genres_page() {
                 0x0078, 0x0060, 0x004c, 0x0030, 0x001c, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x01a8, 0x0190],
             row_presence_flags: 0x0003,
-            unknown: 0x0002, // This is different from the usual
+            transaction_row_flags: 0x0002, // This is different from the usual
         },
     ];
 
@@ -1044,7 +1044,7 @@ fn genres_page() {
             page_index: PageIndex::try_from(48).unwrap(),
             page_type: PageType::Plain(PlainPageType::Genres),
             next_page: PageIndex::try_from(449).unwrap(),
-            unknown1: 14405,
+            page_sequence: 14405,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(18)
@@ -1055,8 +1055,8 @@ fn genres_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 17,
+                transaction_row_count: 1,
+                transaction_row_index: 17,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -1083,7 +1083,7 @@ fn artists_page() {
                 0x009c, 0x007c, 0x0064, 0x0040, 0x0020, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -1091,7 +1091,7 @@ fn artists_page() {
                 0x029c, 0x0280, 0x025c, 0x0238, 0x0218, 0x01f8,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -1099,7 +1099,7 @@ fn artists_page() {
                 0x04b0, 0x0494, 0x0478, 0x0440, 0x0420, 0x0400,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -1107,7 +1107,7 @@ fn artists_page() {
                 0x068c, 0x0674, 0x0650, 0x062c, 0x0610, 0x05f0,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -1115,7 +1115,7 @@ fn artists_page() {
                 0x0874, 0x0858, 0x083c, 0x081c, 0x07fc, 0x07e4,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -1123,7 +1123,7 @@ fn artists_page() {
                 0x0a60, 0x0a40, 0x0a1c, 0x0a00, 0x09e8, 0x09d0,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -1131,7 +1131,7 @@ fn artists_page() {
                 0x0c4c, 0x0c30, 0x0c14, 0x0bf4, 0x0bd4, 0x0bb4,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -1139,7 +1139,7 @@ fn artists_page() {
                 0x0db8,
             ],
             row_presence_flags: 0x00ff,
-            unknown: 0x0080,
+            transaction_row_flags: 0x0080,
         },
     ];
 
@@ -2833,7 +2833,7 @@ fn artists_page() {
             page_index: PageIndex::try_from(6).unwrap(),
             page_type: PageType::Plain(PlainPageType::Artists),
             next_page: PageIndex::try_from(47).unwrap(),
-            unknown1: 855,
+            page_sequence: 855,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(120)
@@ -2844,8 +2844,8 @@ fn artists_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 119,
+                transaction_row_count: 1,
+                transaction_row_index: 119,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -2871,7 +2871,7 @@ fn artist_page_long() {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0374, 0x0260, 0x0244, 0x0130, 0x0114, 0x0000,
         ],
         row_presence_flags: 0x003f,
-        unknown: 0x0020,
+        transaction_row_flags: 0x0020,
     }];
     let rows: BTreeMap<u16, Row> = vec![
         (
@@ -2967,7 +2967,7 @@ fn artist_page_long() {
             page_index: PageIndex::try_from(6).unwrap(),
             page_type: PageType::Plain(PlainPageType::Artists),
             next_page: PageIndex::try_from(46).unwrap(),
-            unknown1: 16,
+            page_sequence: 16,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(6)
@@ -2978,8 +2978,8 @@ fn artist_page_long() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 5,
+                transaction_row_count: 1,
+                transaction_row_index: 5,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -3006,7 +3006,7 @@ fn albums_page() {
                 0x010c, 0x00d8, 0x00ac, 0x007c, 0x0030, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -3014,7 +3014,7 @@ fn albums_page() {
                 0x0418, 0x03e8, 0x03bc, 0x0394, 0x036c, 0x0338,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -3022,7 +3022,7 @@ fn albums_page() {
                 0x0708, 0x06e8, 0x06b8, 0x068c, 0x065c, 0x0630,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -3030,7 +3030,7 @@ fn albums_page() {
                 0x09d8, 0x09ac, 0x0970, 0x0944, 0x091c, 0x08f4,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -3038,12 +3038,12 @@ fn albums_page() {
                 0x0cc8, 0x0c9c, 0x0c78, 0x0c44, 0x0c1c, 0x0bf8,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0ed0, 0x0eac],
             row_presence_flags: 0x0003,
-            unknown: 0x0002,
+            transaction_row_flags: 0x0002,
         },
     ];
     let rows: BTreeMap<u16, Row> = vec![
@@ -4456,7 +4456,7 @@ fn albums_page() {
             page_index: PageIndex::try_from(8).unwrap(),
             page_type: PageType::Plain(PlainPageType::Albums),
             next_page: PageIndex::try_from(49).unwrap(),
-            unknown1: 772,
+            page_sequence: 772,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(82)
@@ -4467,8 +4467,8 @@ fn albums_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 81,
+                transaction_row_count: 1,
+                transaction_row_index: 81,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -4495,7 +4495,7 @@ fn labels_page() {
                 0x0068, 0x0058, 0x0034, 0x0028, 0x0014, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4503,7 +4503,7 @@ fn labels_page() {
                 0x019c, 0x0174, 0x015c, 0x0148, 0x0138, 0x012c,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4511,7 +4511,7 @@ fn labels_page() {
                 0x02ec, 0x02e0, 0x02d8, 0x02c0, 0x02ac, 0x0298,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4519,7 +4519,7 @@ fn labels_page() {
                 0x041c, 0x040c, 0x03fc, 0x03e8, 0x03dc, 0x03cc,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4527,7 +4527,7 @@ fn labels_page() {
                 0x0544, 0x0530, 0x0520, 0x0500, 0x04f0, 0x04e4,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4535,7 +4535,7 @@ fn labels_page() {
                 0x0664, 0x064c, 0x0634, 0x061c, 0x060c, 0x05fc,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4543,7 +4543,7 @@ fn labels_page() {
                 0x07b4, 0x07a4, 0x078c, 0x0778, 0x0764, 0x074c,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4551,7 +4551,7 @@ fn labels_page() {
                 0x08f4, 0x08dc, 0x08cc, 0x08b8, 0x08a8, 0x0890,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4559,7 +4559,7 @@ fn labels_page() {
                 0x0a38, 0x0a24, 0x0a18, 0x0a08, 0x09f0, 0x09d8,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4567,7 +4567,7 @@ fn labels_page() {
                 0x0b80, 0x0b74, 0x0b60, 0x0b50, 0x0b3c, 0x0b2c,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -4575,12 +4575,12 @@ fn labels_page() {
                 0x0cf4, 0x0cdc, 0x0cd0, 0x0cc0, 0x0cac, 0x0c9c,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0e34],
             row_presence_flags: 0x0001,
-            unknown: 0x0001,
+            transaction_row_flags: 0x0001,
         },
     ];
 
@@ -5833,7 +5833,7 @@ fn labels_page() {
             page_index: PageIndex::try_from(10).unwrap(),
             page_type: PageType::Plain(PlainPageType::Labels),
             next_page: PageIndex::try_from(50).unwrap(),
-            unknown1: 4627,
+            page_sequence: 4627,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(177)
@@ -5844,8 +5844,8 @@ fn labels_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 176,
+                transaction_row_count: 1,
+                transaction_row_index: 176,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -5872,7 +5872,7 @@ fn keys_page() {
                 0x0048, 0x003c, 0x002c, 0x0020, 0x0010, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -5880,7 +5880,7 @@ fn keys_page() {
                 0x013c, 0x012c, 0x011c, 0x010c, 0x00fc, 0x00ec,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -5888,14 +5888,14 @@ fn keys_page() {
                 0x022c, 0x021c, 0x020c, 0x01fc, 0x01f0, 0x01e0,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x02e0, 0x02d4, 0x02c8, 0x02b8,
             ],
             row_presence_flags: 0x000f,
-            unknown: 0x0008,
+            transaction_row_flags: 0x0008,
         },
     ];
 
@@ -6325,7 +6325,7 @@ fn keys_page() {
             page_index: PageIndex::try_from(12).unwrap(),
             page_type: PageType::Plain(PlainPageType::Keys),
             next_page: PageIndex::try_from(51).unwrap(),
-            unknown1: 13484,
+            page_sequence: 13484,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(52)
@@ -6336,8 +6336,8 @@ fn keys_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 51,
+                transaction_row_count: 1,
+                transaction_row_index: 51,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -6362,7 +6362,7 @@ fn colors_page() {
             0, 0, 0, 0, 0, 0, 0, 0, 0x006c, 0x005c, 0x004c, 0x003c, 0x002c, 0x001c, 0x0010, 0x0000,
         ],
         row_presence_flags: 0x00ff,
-        unknown: 0x00ff,
+        transaction_row_flags: 0x00ff,
     }];
 
     let rows: BTreeMap<u16, Row> = vec![
@@ -6455,7 +6455,7 @@ fn colors_page() {
             page_index: PageIndex::try_from(14).unwrap(),
             page_type: PageType::Plain(PlainPageType::Colors),
             next_page: PageIndex::try_from(42).unwrap(),
-            unknown1: 2,
+            page_sequence: 2,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(8)
@@ -6466,8 +6466,8 @@ fn colors_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 8,
-                unknown_not_num_rows_large: 0,
+                transaction_row_count: 8,
+                transaction_row_index: 0,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -6494,7 +6494,7 @@ fn playlist_tree_page() {
                 0x008c, 0x0070, 0x0054, 0x0038, 0x001c, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6502,7 +6502,7 @@ fn playlist_tree_page() {
                 0x01f8, 0x01dc, 0x01c0,
             ],
             row_presence_flags: 0x07ff,
-            unknown: 0x0400,
+            transaction_row_flags: 0x0400,
         },
     ];
 
@@ -6813,7 +6813,7 @@ fn playlist_tree_page() {
             page_index: PageIndex::try_from(16).unwrap(),
             page_type: PageType::Plain(PlainPageType::PlaylistTree),
             next_page: PageIndex::try_from(46).unwrap(),
-            unknown1: 36,
+            page_sequence: 36,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(27)
@@ -6824,8 +6824,8 @@ fn playlist_tree_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 26,
+                transaction_row_count: 1,
+                transaction_row_index: 26,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -6852,7 +6852,7 @@ fn playlist_entries_page() {
                 0x003c, 0x0030, 0x0024, 0x0018, 0x000c, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6860,7 +6860,7 @@ fn playlist_entries_page() {
                 0x00fc, 0x00f0, 0x00e4, 0x00d8, 0x00cc, 0x00c0,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6868,7 +6868,7 @@ fn playlist_entries_page() {
                 0x01bc, 0x01b0, 0x01a4, 0x0198, 0x018c, 0x0180,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6876,7 +6876,7 @@ fn playlist_entries_page() {
                 0x027c, 0x0270, 0x0264, 0x0258, 0x024c, 0x0240,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6884,7 +6884,7 @@ fn playlist_entries_page() {
                 0x033c, 0x0330, 0x0324, 0x0318, 0x030c, 0x0300,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6892,7 +6892,7 @@ fn playlist_entries_page() {
                 0x03fc, 0x03f0, 0x03e4, 0x03d8, 0x03cc, 0x03c0,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6900,7 +6900,7 @@ fn playlist_entries_page() {
                 0x04bc, 0x04b0, 0x04a4, 0x0498, 0x048c, 0x0480,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6908,7 +6908,7 @@ fn playlist_entries_page() {
                 0x057c, 0x0570, 0x0564, 0x0558, 0x054c, 0x0540,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6916,7 +6916,7 @@ fn playlist_entries_page() {
                 0x063c, 0x0630, 0x0624, 0x0618, 0x060c, 0x0600,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6924,7 +6924,7 @@ fn playlist_entries_page() {
                 0x06fc, 0x06f0, 0x06e4, 0x06d8, 0x06cc, 0x06c0,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6932,7 +6932,7 @@ fn playlist_entries_page() {
                 0x07bc, 0x07b0, 0x07a4, 0x0798, 0x078c, 0x0780,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6940,7 +6940,7 @@ fn playlist_entries_page() {
                 0x087c, 0x0870, 0x0864, 0x0858, 0x084c, 0x0840,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6948,7 +6948,7 @@ fn playlist_entries_page() {
                 0x093c, 0x0930, 0x0924, 0x0918, 0x090c, 0x0900,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6956,7 +6956,7 @@ fn playlist_entries_page() {
                 0x09fc, 0x09f0, 0x09e4, 0x09d8, 0x09cc, 0x09c0,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6964,7 +6964,7 @@ fn playlist_entries_page() {
                 0x0abc, 0x0ab0, 0x0aa4, 0x0a98, 0x0a8c, 0x0a80,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6972,7 +6972,7 @@ fn playlist_entries_page() {
                 0x0b7c, 0x0b70, 0x0b64, 0x0b58, 0x0b4c, 0x0b40,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6980,7 +6980,7 @@ fn playlist_entries_page() {
                 0x0c3c, 0x0c30, 0x0c24, 0x0c18, 0x0c0c, 0x0c00,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -6988,7 +6988,7 @@ fn playlist_entries_page() {
                 0x0cd8, 0x0ccc, 0x0cc0,
             ],
             row_presence_flags: 0x0fff,
-            unknown: 0x0800,
+            transaction_row_flags: 0x0800,
         },
     ];
 
@@ -9274,7 +9274,7 @@ fn playlist_entries_page() {
             page_index: PageIndex::try_from(18).unwrap(),
             page_type: PageType::Plain(PlainPageType::PlaylistEntries),
             next_page: PageIndex::try_from(54).unwrap(),
-            unknown1: 1420,
+            page_sequence: 1420,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(284)
@@ -9285,8 +9285,8 @@ fn playlist_entries_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 283,
+                transaction_row_count: 1,
+                transaction_row_index: 283,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -9313,7 +9313,7 @@ fn artworks_page() {
                 0x00b4, 0x0090, 0x006c, 0x0048, 0x0024, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -9321,7 +9321,7 @@ fn artworks_page() {
                 0x02f4, 0x02d0, 0x02ac, 0x0288, 0x0264, 0x0240,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -9329,7 +9329,7 @@ fn artworks_page() {
                 0x0534, 0x0510, 0x04ec, 0x04c8, 0x04a4, 0x0480,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -9337,7 +9337,7 @@ fn artworks_page() {
                 0x0774, 0x0750, 0x072c, 0x0708, 0x06e4, 0x06c0,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -9345,7 +9345,7 @@ fn artworks_page() {
                 0x09b4, 0x0990, 0x096c, 0x0948, 0x0924, 0x0900,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -9353,7 +9353,7 @@ fn artworks_page() {
                 0x0bf4, 0x0bd0, 0x0bac, 0x0b88, 0x0b64, 0x0b40,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -9361,7 +9361,7 @@ fn artworks_page() {
                 0x0da4, 0x0d80,
             ],
             row_presence_flags: 0x03ff,
-            unknown: 0x0200,
+            transaction_row_flags: 0x0200,
         },
     ];
 
@@ -10117,7 +10117,7 @@ fn artworks_page() {
             page_index: PageIndex::try_from(28).unwrap(),
             page_type: PageType::Plain(PlainPageType::Artwork),
             next_page: PageIndex::try_from(53).unwrap(),
-            unknown1: 1019,
+            page_sequence: 1019,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(106)
@@ -10128,8 +10128,8 @@ fn artworks_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 105,
+                transaction_row_count: 1,
+                transaction_row_index: 105,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -10156,14 +10156,14 @@ fn tag_page() {
                 0x010c, 0x00d8, 0x00a0, 0x006c, 0x0038, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0xffff, // interestingly the same as row_presence_flags
+            transaction_row_flags: 0xffff, // interestingly the same as row_presence_flags
         },
         RowGroup {
             row_offsets: [
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0490, 0x0458, 0x0424, 0x03f0, 0x03bc, 0x0388, 0x0354,
             ],
             row_presence_flags: 0x007f,
-            unknown: 0x007f, // interestingly the same as row_presence_flags
+            transaction_row_flags: 0x007f, // interestingly the same as row_presence_flags
         },
     ];
 
@@ -10637,7 +10637,7 @@ fn tag_page() {
             page_index: PageIndex::try_from(8).unwrap(),
             page_type: PageType::Ext(ExtPageType::Tag),
             next_page: PageIndex::try_from(20).unwrap(),
-            unknown1: 2,
+            page_sequence: 2,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(23)
@@ -10648,8 +10648,8 @@ fn tag_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 23,
-                unknown_not_num_rows_large: 0,
+                transaction_row_count: 23,
+                transaction_row_index: 0,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -10676,7 +10676,7 @@ fn track_tag_page() {
                 0x0050, 0x0040, 0x0030, 0x0020, 0x0010, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -10684,7 +10684,7 @@ fn track_tag_page() {
                 0x0150, 0x0140, 0x0130, 0x0120, 0x0110, 0x0100,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
@@ -10692,14 +10692,14 @@ fn track_tag_page() {
                 0x0250, 0x0240, 0x0230, 0x0220, 0x0210, 0x0200,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         },
         RowGroup {
             row_offsets: [
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0330, 0x0320, 0x0310, 0x0300,
             ],
             row_presence_flags: 0x000f,
-            unknown: 0x0008,
+            transaction_row_flags: 0x0008,
         },
     ];
 
@@ -11129,7 +11129,7 @@ fn track_tag_page() {
             page_index: PageIndex::try_from(10).unwrap(),
             page_type: PageType::Ext(ExtPageType::TrackTag),
             next_page: PageIndex::try_from(21).unwrap(),
-            unknown1: 54,
+            page_sequence: 54,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(52)
@@ -11140,8 +11140,8 @@ fn track_tag_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 51,
+                transaction_row_count: 1,
+                transaction_row_index: 51,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -11166,7 +11166,7 @@ fn history_playlists_page() {
     let row_groups = vec![RowGroup {
         row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0000],
         row_presence_flags: 0x0001,
-        unknown: 0x0001,
+        transaction_row_flags: 0x0001,
     }];
 
     let rows: BTreeMap<u16, Row> = vec![(
@@ -11184,7 +11184,7 @@ fn history_playlists_page() {
             page_index: PageIndex::try_from(24).unwrap(),
             page_type: PageType::Plain(PlainPageType::HistoryPlaylists),
             next_page: PageIndex::try_from(59).unwrap(),
-            unknown1: 240,
+            page_sequence: 240,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(1)
@@ -11195,8 +11195,8 @@ fn history_playlists_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 0,
+                transaction_row_count: 1,
+                transaction_row_index: 0,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -11222,7 +11222,7 @@ fn history_entries_page() {
             0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0048, 0x003c, 0x0030, 0x0024, 0x0018, 0x000c, 0x0000,
         ],
         row_presence_flags: 0x007f,
-        unknown: 0x0040,
+        transaction_row_flags: 0x0040,
     }];
 
     let rows: BTreeMap<u16, Row> = vec![
@@ -11291,7 +11291,7 @@ fn history_entries_page() {
             page_index: PageIndex::try_from(60).unwrap(),
             page_type: PageType::Plain(PlainPageType::HistoryEntries),
             next_page: PageIndex::try_from(62).unwrap(),
-            unknown1: 254,
+            page_sequence: 254,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(7)
@@ -11302,8 +11302,8 @@ fn history_entries_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 1,
-                unknown_not_num_rows_large: 6,
+                transaction_row_count: 1,
+                transaction_row_index: 6,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -11330,14 +11330,14 @@ fn menu_page() {
                 0x0028, 0x0020, 0x0018, 0x0010, 0x0008, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0xffff,
+            transaction_row_flags: 0xffff,
         },
         RowGroup {
             row_offsets: [
                 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x00a8, 0x00a0, 0x0098, 0x0090, 0x0088, 0x0080,
             ],
             row_presence_flags: 0x003f,
-            unknown: 0x003f,
+            transaction_row_flags: 0x003f,
         },
     ];
 
@@ -11571,7 +11571,7 @@ fn menu_page() {
             page_index: PageIndex::try_from(36).unwrap(),
             page_type: PageType::Plain(PlainPageType::Menu),
             next_page: PageIndex::try_from(44).unwrap(),
-            unknown1: 4,
+            page_sequence: 4,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(22)
@@ -11582,8 +11582,8 @@ fn menu_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 22,
-                unknown_not_num_rows_large: 0,
+                transaction_row_count: 22,
+                transaction_row_index: 0,
                 unknown6: 0,
                 unknown7: 0,
             },
@@ -11602,280 +11602,280 @@ fn menu_page() {
 }
 
 #[test]
-fn index_page() {
+fn free_space_page() {
     let entries = vec![
-        IndexEntry::try_from((PageIndex::try_from(604).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(371).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(441).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(471).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(210).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(412).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(327).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(434).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(251).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(238).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(574).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(141).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(234).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(67).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(162).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(486).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(61).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(116).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(585).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(501).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(691).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(164).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(235).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(692).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(243).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(481).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(174).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(246).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(566).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(653).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(480).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(168).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(575).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(552).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(170).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(182).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(155).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(59).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(548).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(249).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(250).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(707).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(248).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(121).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(484).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(253).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(670).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(153).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(255).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(108).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(258).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(259).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(485).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(555).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(583).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(637).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(658).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(125).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(714).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(618).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(84).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(678).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(662).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(528).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(482).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(535).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(586).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(470).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(213).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(157).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(627).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(161).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(705).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(611).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(292).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(710).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(711).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(641).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(706).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(712).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(98).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(551).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(700).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(57).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(474).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(487).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(540).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(642).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(646).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(564).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(159).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(546).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(130).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(708).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(716).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(683).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(247).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(625).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(257).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(506).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(60).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(527).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(516).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(416).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(601).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(623).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(114).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(69).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(460).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(577).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(584).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(600).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(431).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(571).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(149).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(541).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(699).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(680).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(518).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(2).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(438).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(358).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(179).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(147).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(587).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(190).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(617).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(56).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(226).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(201).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(135).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(652).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(543).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(422).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(94).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(86).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(205).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(687).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(671).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(644).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(688).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(513).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(240).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(560).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(215).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(214).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(624).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(224).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(614).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(689).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(703).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(427).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(171).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(158).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(589).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(193).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(647).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(163).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(549).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(633).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(694).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(68).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(204).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(519).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(545).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(561).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(695).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(85).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(616).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(88).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(718).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(440).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(241).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(638).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(442).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(380).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(634).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(488).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(697).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(603).unwrap(), 5)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(572).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(675).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(677).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(361).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(520).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(423).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(439).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(160).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(580).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(146).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(631).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(630).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(398).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(417).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(682).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(558).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(245).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(458).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(701).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(599).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(628).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(684).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(459).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(648).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(650).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(645).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(690).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(456).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(229).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(109).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(286).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(531).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(632).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(185).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(303).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(651).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(696).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(239).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(620).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(639).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(192).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(411).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(154).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(212).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(483).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(282).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(490).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(476).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(609).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(508).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(279).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(194).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(570).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(172).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(233).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(588).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(504).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(491).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(505).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(507).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(151).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(523).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(360).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(525).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(370).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(595).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(668).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(579).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(655).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(660).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(679).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(394).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(661).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(278).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(659).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(713).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(698).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(715).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(309).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(252).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(615).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(702).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(717).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(685).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(665).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(673).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(521).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(550).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(622).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(704).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(709).unwrap(), 0)).unwrap(),
-        IndexEntry::try_from((PageIndex::try_from(603).unwrap(), 3)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(604).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(371).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(441).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(471).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(210).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(412).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(327).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(434).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(251).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(238).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(574).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(141).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(234).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(67).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(162).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(486).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(61).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(116).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(585).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(501).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(691).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(164).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(235).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(692).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(243).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(481).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(174).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(246).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(566).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(653).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(480).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(168).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(575).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(552).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(170).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(182).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(155).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(59).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(548).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(249).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(250).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(707).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(248).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(121).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(484).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(253).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(670).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(153).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(255).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(108).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(258).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(259).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(485).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(555).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(583).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(637).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(658).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(125).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(714).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(618).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(84).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(678).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(662).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(528).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(482).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(535).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(586).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(470).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(213).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(157).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(627).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(161).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(705).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(611).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(292).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(710).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(711).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(641).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(706).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(712).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(98).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(551).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(700).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(57).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(474).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(487).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(540).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(642).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(646).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(564).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(159).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(546).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(130).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(708).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(716).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(683).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(247).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(625).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(257).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(506).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(60).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(527).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(516).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(416).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(601).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(623).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(114).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(69).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(460).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(577).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(584).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(600).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(431).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(571).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(149).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(541).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(699).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(680).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(518).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(2).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(438).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(358).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(179).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(147).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(587).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(190).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(617).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(56).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(226).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(201).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(135).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(652).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(543).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(422).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(94).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(86).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(205).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(687).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(671).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(644).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(688).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(513).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(240).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(560).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(215).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(214).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(624).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(224).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(614).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(689).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(703).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(427).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(171).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(158).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(589).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(193).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(647).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(163).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(549).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(633).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(694).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(68).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(204).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(519).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(545).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(561).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(695).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(85).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(616).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(88).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(718).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(440).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(241).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(638).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(442).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(380).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(634).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(488).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(697).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(603).unwrap(), 5)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(572).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(675).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(677).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(361).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(520).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(423).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(439).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(160).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(580).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(146).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(631).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(630).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(398).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(417).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(682).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(558).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(245).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(458).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(701).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(599).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(628).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(684).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(459).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(648).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(650).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(645).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(690).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(456).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(229).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(109).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(286).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(531).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(632).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(185).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(303).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(651).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(696).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(239).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(620).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(639).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(192).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(411).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(154).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(212).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(483).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(282).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(490).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(476).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(609).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(508).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(279).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(194).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(570).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(172).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(233).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(588).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(504).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(491).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(505).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(507).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(151).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(523).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(360).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(525).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(370).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(595).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(668).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(579).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(655).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(660).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(679).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(394).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(661).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(278).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(659).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(713).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(698).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(715).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(309).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(252).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(615).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(702).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(717).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(685).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(665).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(673).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(521).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(550).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(622).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(704).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(709).unwrap(), 0)).unwrap(),
+        FreeSpaceEntry::try_from((PageIndex::try_from(603).unwrap(), 3)).unwrap(),
     ];
 
     let page = Page {
@@ -11883,17 +11883,17 @@ fn index_page() {
             page_index: PageIndex::try_from(1).unwrap(),
             page_type: PageType::Plain(PlainPageType::Tracks),
             next_page: PageIndex::try_from(2).unwrap(),
-            unknown1: 29871,
+            page_sequence: 29871,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(0)
                 .with_num_rows_valid(0),
-            page_flags: PageFlags::new_index_page(),
+            page_flags: PageFlags::new_free_space_page(),
             free_size: 0,
             used_size: 0,
         },
-        content: PageContent::Index(IndexPageContent {
-            header: IndexPageHeader {
+        content: PageContent::FreeSpace(FreeSpacePageContent {
+            header: FreeSpacePageHeader {
                 unknown_a: 2,
                 unknown_b: 179,
                 next_offset: 272,

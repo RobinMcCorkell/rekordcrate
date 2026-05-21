@@ -307,7 +307,7 @@ fn dump_pdb(path: &Path, typ: DatabaseType, parse_unknown_tables: bool) -> rekor
                         println!("      {:?}", row);
                     }
                 }
-                PageContent::Index(index_content) => {
+                PageContent::FreeSpace(index_content) => {
                     println!("    {:?}", index_content);
                     for entry in index_content.entries.iter() {
                         println!("      {:?}", entry);
@@ -357,9 +357,9 @@ fn dump_xml(path: &Path) -> rekordcrate::Result<()> {
 #[cfg(feature = "device_library_plus")]
 fn dump_dlp(path: &Path) -> rekordcrate::Result<()> {
     use rekordcrate::device_library_plus::{
-        Album, Artist, Category, Color, Content as DlpContent, Cue, Genre, History,
-        HistoryContent, HotCueBankList, HotCueBankListCue, Image, Key, Label, MenuItem, MyTag,
-        MyTagContent, Playlist, PlaylistContent, Property, RecommendedLike, Sort, TableRecord,
+        Album, Artist, Category, Color, Content as DlpContent, Cue, Genre, History, HistoryContent,
+        HotCueBankList, HotCueBankListCue, Image, Key, Label, MenuItem, MyTag, MyTagContent,
+        Playlist, PlaylistContent, Property, RecommendedLike, Sort, TableRecord,
     };
 
     let mut db = rekordcrate::device_library_plus::Database::open(path)?;

@@ -12,7 +12,7 @@
 //! rekordbox-generated database files. These invariants cover the file-level structure
 //! (file size, page count), per-page fields (`page_index`, `page_flags`, `unknown2`),
 //! table chain pointers (`next_page`, `empty_candidate`), and consistency between the
-//! `PageHeader` and `IndexPageHeader` page-index fields.
+//! `PageHeader` and `FreeSpacePageHeader` page-index fields.
 //!
 //! # Usage
 //!
@@ -37,7 +37,7 @@ use thiserror::Error;
 
 /// The page size expected in all known rekordbox exports.
 const EXPECTED_PAGE_SIZE: u32 = 4096;
-/// The sentinel value stored in `IndexPageHeader.next_page` for an empty table.
+/// The sentinel value stored in `FreeSpacePageHeader.next_page` for an empty table.
 const NEXT_PAGE_SENTINEL: u32 = 0x03FF_FFFF;
 /// Expected number of tables in a `DatabaseType::Plain` (`export.pdb`) file.
 const EXPECTED_NUM_TABLES_PLAIN: u32 = 20;
@@ -56,8 +56,8 @@ pub enum ValidationError {
     #[error("Unexpected page size: expected {expected}, found {actual}")]
     UnexpectedPageSize { expected: u32, actual: u32 },
 
-    /// The database sequence number is zero; it must be >= 1.
-    #[error("Header sequence must be >= 1, got {0}")]
+    /// The database next-page sequence number is zero; it must be >= 1.
+    #[error("Header next_page_sequence must be >= 1, got {0}")]
     SequenceZero(u32),
 
     /// The number of tables does not match the expected count for the database type.
@@ -77,7 +77,7 @@ pub enum ValidationError {
     #[error("Page {page_index:?} has non-zero PageHeader.unknown2: {value:#010x}")]
     PageUnknown2NonZero { page_index: PageIndex, value: u32 },
 
-    /// A page has unexpected `page_flags` (must be 0x24, 0x34 for data or 0x64 for index).
+    /// A page has unexpected `page_flags` (must be 0x24, 0x34 for data or 0x64 for free-space).
     #[error("Page {page_index:?} has unexpected page_flags: {flags:#04x}")]
     InvalidPageFlags { page_index: PageIndex, flags: u8 },
 
@@ -91,17 +91,20 @@ pub enum ValidationError {
         next_unused_page: u32,
     },
 
-    /// An empty table's index page has `IndexPageHeader.next_page` != the sentinel.
+    /// An empty table's free-space page has `FreeSpacePageHeader.next_page` != the sentinel.
     #[error(
-        "Table {table_index} (empty): IndexPageHeader.next_page should be sentinel \
+        "Table {table_index} (empty): FreeSpacePageHeader.next_page should be sentinel \
          {NEXT_PAGE_SENTINEL:#010x}, but got {actual:?}"
     )]
-    EmptyTableSentinelMissing { table_index: usize, actual: PageIndex },
+    EmptyTableSentinelMissing {
+        table_index: usize,
+        actual: PageIndex,
+    },
 
-    /// An empty table's index page has `PageHeader.next_page` != `empty_candidate`.
+    /// An empty table's free-space page has `PageHeader.next_page` != `empty_candidate`.
     #[error(
-        "Table {table_index} (empty): index page PageHeader.next_page should point to \
-         empty_candidate {expected:?}, but got {actual:?}"
+        "Table {table_index} (empty): free-space page PageHeader.next_page should point to \
+          empty_candidate {expected:?}, but got {actual:?}"
     )]
     EmptyTableIndexNextPageWrong {
         table_index: usize,
@@ -120,9 +123,9 @@ pub enum ValidationError {
         actual: PageIndex,
     },
 
-    /// A non-empty table's index page has `IndexPageHeader.next_page` != the first data page.
+    /// A non-empty table's free-space page has `FreeSpacePageHeader.next_page` != the first data page.
     #[error(
-        "Table {table_index} (non-empty): IndexPageHeader.next_page should be first data page \
+        "Table {table_index} (non-empty): FreeSpacePageHeader.next_page should be first data page \
          {expected:?}, but got {actual:?}"
     )]
     NonEmptyTableIndexNextPageWrong {
@@ -131,12 +134,12 @@ pub enum ValidationError {
         actual: PageIndex,
     },
 
-    /// An index page's `IndexPageHeader.page_index` does not match `PageHeader.page_index`.
+    /// A free-space page's `FreeSpacePageHeader.page_index` does not match `PageHeader.page_index`.
     #[error(
-        "Index page {page_index:?}: IndexPageHeader.page_index = {header_page_index:?} does not \
+        "Free-space page {page_index:?}: FreeSpacePageHeader.page_index = {header_page_index:?} does not \
          match PageHeader.page_index"
     )]
-    IndexHeaderPageIndexMismatch {
+    FreeSpaceHeaderPageIndexMismatch {
         page_index: PageIndex,
         header_page_index: PageIndex,
     },
@@ -151,14 +154,14 @@ pub enum ValidationError {
 /// Checks invariants derived from rekordbox-generated files:
 /// - File size is a multiple of `page_size`
 /// - `page_size == 4096`
-/// - `sequence >= 1`
+/// - `next_page_sequence >= 1`
 /// - `num_tables` matches the database type
 /// - Every non-EC page has `PageHeader.page_index == physical position`
 /// - Every non-EC page has `PageHeader.unknown2 == 0`
 /// - Every non-EC page has valid `page_flags` (0x24, 0x34, or 0x64)
-/// - Every index page has matching `PageHeader.page_index` and `IndexPageHeader.page_index`
+/// - Every free-space page has matching `PageHeader.page_index` and `FreeSpacePageHeader.page_index`
 /// - Every table's `empty_candidate < next_unused_page`
-/// - Empty tables have correct sentinel and pointer in their index page
+/// - Empty tables have correct sentinel and pointer in their free-space page
 /// - Non-empty tables have their last page pointing to `empty_candidate`
 ///
 /// Returns a list of all violations found; an empty list means the database is valid.
@@ -225,10 +228,10 @@ pub fn validate<R: Read + Seek>(db: &mut Database<R>) -> Vec<ValidationError> {
             });
         }
 
-        if page.header.page_flags.is_index_page() {
-            if let Some(idx_content) = page.content.as_index() {
+        if page.header.page_flags.is_free_space_page() {
+            if let Some(idx_content) = page.content.as_free_space() {
                 if idx_content.header.page_index != page.header.page_index {
-                    errors.push(ValidationError::IndexHeaderPageIndexMismatch {
+                    errors.push(ValidationError::FreeSpaceHeaderPageIndexMismatch {
                         page_index: page.header.page_index,
                         header_page_index: idx_content.header.page_index,
                     });
@@ -254,8 +257,8 @@ pub fn validate<R: Read + Seek>(db: &mut Database<R>) -> Vec<ValidationError> {
         }
 
         if table.first_page == table.last_page {
-            // Empty table: index page is both first and last.
-            let index_page = match db.load_page(table.first_page) {
+            // Empty table: the free-space page is both first and last.
+            let free_space_page = match db.load_page(table.first_page) {
                 Ok(p) => p,
                 Err(e) => {
                     errors.push(ValidationError::IoError(e));
@@ -263,15 +266,15 @@ pub fn validate<R: Read + Seek>(db: &mut Database<R>) -> Vec<ValidationError> {
                 }
             };
 
-            if index_page.header.next_page != ec_idx {
+            if free_space_page.header.next_page != ec_idx {
                 errors.push(ValidationError::EmptyTableIndexNextPageWrong {
                     table_index,
                     expected: ec_idx,
-                    actual: index_page.header.next_page,
+                    actual: free_space_page.header.next_page,
                 });
             }
 
-            if let Some(idx_content) = index_page.content.as_index() {
+            if let Some(idx_content) = free_space_page.content.as_free_space() {
                 if idx_content.header.next_page.0 != NEXT_PAGE_SENTINEL {
                     errors.push(ValidationError::EmptyTableSentinelMissing {
                         table_index,
@@ -297,17 +300,17 @@ pub fn validate<R: Read + Seek>(db: &mut Database<R>) -> Vec<ValidationError> {
                 });
             }
 
-            // The index page's inner IndexPageHeader.next_page must agree with the outer
+            // The free-space page's inner FreeSpacePageHeader.next_page must agree with the outer
             // PageHeader.next_page (both should point to the first data page).
-            let index_page = match db.load_page(table.first_page) {
+            let free_space_page = match db.load_page(table.first_page) {
                 Ok(p) => p,
                 Err(e) => {
                     errors.push(ValidationError::IoError(e));
                     continue;
                 }
             };
-            let expected_first_data = index_page.header.next_page;
-            if let Some(idx_content) = index_page.content.as_index() {
+            let expected_first_data = free_space_page.header.next_page;
+            if let Some(idx_content) = free_space_page.content.as_free_space() {
                 if idx_content.header.next_page != expected_first_data {
                     errors.push(ValidationError::NonEmptyTableIndexNextPageWrong {
                         table_index,
@@ -333,7 +336,7 @@ fn check_page_size<R: Read + Seek>(db: &Database<R>, errors: &mut Vec<Validation
 }
 
 fn check_sequence<R: Read + Seek>(db: &Database<R>, errors: &mut Vec<ValidationError>) {
-    let seq = db.get_header().sequence;
+    let seq = db.get_header().next_page_sequence;
     if seq == 0 {
         errors.push(ValidationError::SequenceZero(seq));
     }

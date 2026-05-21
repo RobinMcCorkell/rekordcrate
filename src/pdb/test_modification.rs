@@ -18,7 +18,7 @@ fn allocate_row_empty_page() {
                 page_index: PageIndex::try_from(12).unwrap(),
                 page_type: PageType::Plain(PlainPageType::Keys),
                 next_page: PageIndex::try_from(51).unwrap(),
-                unknown1: 13484,
+                page_sequence: 13484,
                 unknown2: 0,
                 packed_row_counts: PackedRowCounts::new()
                     .with_num_rows(0)
@@ -29,8 +29,8 @@ fn allocate_row_empty_page() {
             },
             content: PageContent::Data(DataPageContent {
                 header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
                     unknown6: 0,
                     unknown7: 0,
                 },
@@ -55,7 +55,7 @@ fn allocate_row_empty_page() {
         let row_groups = vec![RowGroup {
             row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0000],
             row_presence_flags: 0x0001,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         }];
 
         let rows: BTreeMap<u16, Row> = vec![(
@@ -74,7 +74,7 @@ fn allocate_row_empty_page() {
                 page_index: PageIndex::try_from(12).unwrap(),
                 page_type: PageType::Plain(PlainPageType::Keys),
                 next_page: PageIndex::try_from(51).unwrap(),
-                unknown1: 13484,
+                page_sequence: 13484,
                 unknown2: 0,
                 packed_row_counts: PackedRowCounts::new()
                     .with_num_rows(1)
@@ -87,8 +87,8 @@ fn allocate_row_empty_page() {
             },
             content: PageContent::Data(DataPageContent {
                 header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
                     unknown6: 0,
                     unknown7: 0,
                 },
@@ -107,7 +107,7 @@ fn allocate_row_existing_row_group() {
         let row_groups = vec![RowGroup {
             row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0000],
             row_presence_flags: 0x0001,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         }];
 
         let rows: BTreeMap<u16, Row> = vec![(
@@ -126,7 +126,7 @@ fn allocate_row_existing_row_group() {
                 page_index: PageIndex::try_from(12).unwrap(),
                 page_type: PageType::Plain(PlainPageType::Keys),
                 next_page: PageIndex::try_from(51).unwrap(),
-                unknown1: 13484,
+                page_sequence: 13484,
                 unknown2: 0,
                 packed_row_counts: PackedRowCounts::new()
                     .with_num_rows(1)
@@ -137,8 +137,8 @@ fn allocate_row_existing_row_group() {
             },
             content: PageContent::Data(DataPageContent {
                 header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
                     unknown6: 0,
                     unknown7: 0,
                 },
@@ -163,7 +163,7 @@ fn allocate_row_existing_row_group() {
         let row_groups = vec![RowGroup {
             row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0010, 0x0000],
             row_presence_flags: 0x0003,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         }];
 
         let rows: BTreeMap<u16, Row> = vec![
@@ -192,7 +192,7 @@ fn allocate_row_existing_row_group() {
                 page_index: PageIndex::try_from(12).unwrap(),
                 page_type: PageType::Plain(PlainPageType::Keys),
                 next_page: PageIndex::try_from(51).unwrap(),
-                unknown1: 13484,
+                page_sequence: 13484,
                 unknown2: 0,
                 packed_row_counts: PackedRowCounts::new()
                     .with_num_rows(2)
@@ -205,8 +205,8 @@ fn allocate_row_existing_row_group() {
             },
             content: PageContent::Data(DataPageContent {
                 header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
                     unknown6: 0,
                     unknown7: 0,
                 },
@@ -225,7 +225,7 @@ fn allocate_row_interrupted() {
         let row_groups = vec![RowGroup {
             row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0000],
             row_presence_flags: 0x0001,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         }];
 
         let rows: BTreeMap<u16, Row> = vec![(
@@ -244,7 +244,7 @@ fn allocate_row_interrupted() {
                 page_index: PageIndex::try_from(12).unwrap(),
                 page_type: PageType::Plain(PlainPageType::Keys),
                 next_page: PageIndex::try_from(51).unwrap(),
-                unknown1: 13484,
+                page_sequence: 13484,
                 unknown2: 0,
                 packed_row_counts: PackedRowCounts::new()
                     .with_num_rows(1)
@@ -255,8 +255,8 @@ fn allocate_row_interrupted() {
             },
             content: PageContent::Data(DataPageContent {
                 header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
                     unknown6: 0,
                     unknown7: 0,
                 },
@@ -278,7 +278,7 @@ fn allocate_row_interrupted() {
         let row_groups = vec![RowGroup {
             row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x0010, 0x0000],
             row_presence_flags: 0x0001,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         }];
 
         let rows: BTreeMap<u16, Row> = vec![(
@@ -297,7 +297,7 @@ fn allocate_row_interrupted() {
                 page_index: PageIndex::try_from(12).unwrap(),
                 page_type: PageType::Plain(PlainPageType::Keys),
                 next_page: PageIndex::try_from(51).unwrap(),
-                unknown1: 13484,
+                page_sequence: 13484,
                 unknown2: 0,
                 // The insert was interrupted so we should have an
                 // extra allocated row but no extra valid rows.
@@ -312,8 +312,8 @@ fn allocate_row_interrupted() {
             },
             content: PageContent::Data(DataPageContent {
                 header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
                     unknown6: 0,
                     unknown7: 0,
                 },
@@ -335,7 +335,7 @@ fn allocate_row_full_row_group() {
                 0x0048, 0x003c, 0x002c, 0x0020, 0x0010, 0x0000,
             ],
             row_presence_flags: 0xffff,
-            unknown: 0x0000,
+            transaction_row_flags: 0x0000,
         }];
 
         let rows: BTreeMap<u16, Row> = vec![
@@ -476,7 +476,7 @@ fn allocate_row_full_row_group() {
                 page_index: PageIndex::try_from(12).unwrap(),
                 page_type: PageType::Plain(PlainPageType::Keys),
                 next_page: PageIndex::try_from(51).unwrap(),
-                unknown1: 13484,
+                page_sequence: 13484,
                 unknown2: 0,
                 packed_row_counts: PackedRowCounts::new()
                     .with_num_rows(16)
@@ -487,8 +487,8 @@ fn allocate_row_full_row_group() {
             },
             content: PageContent::Data(DataPageContent {
                 header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
                     unknown6: 0,
                     unknown7: 0,
                 },
@@ -517,12 +517,12 @@ fn allocate_row_full_row_group() {
                     0x0048, 0x003c, 0x002c, 0x0020, 0x0010, 0x0000,
                 ],
                 row_presence_flags: 0xffff,
-                unknown: 0x0000,
+                transaction_row_flags: 0x0000,
             },
             RowGroup {
                 row_offsets: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0x00ec],
                 row_presence_flags: 0x0001,
-                unknown: 0x0000,
+                transaction_row_flags: 0x0000,
             },
         ];
 
@@ -672,7 +672,7 @@ fn allocate_row_full_row_group() {
                 page_index: PageIndex::try_from(12).unwrap(),
                 page_type: PageType::Plain(PlainPageType::Keys),
                 next_page: PageIndex::try_from(51).unwrap(),
-                unknown1: 13484,
+                page_sequence: 13484,
                 unknown2: 0,
                 packed_row_counts: PackedRowCounts::new()
                     .with_num_rows(17)
@@ -683,8 +683,8 @@ fn allocate_row_full_row_group() {
             },
             content: PageContent::Data(DataPageContent {
                 header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
                     unknown6: 0,
                     unknown7: 0,
                 },
@@ -704,7 +704,7 @@ fn allocate_row_full_page() {
             page_index: PageIndex::try_from(12).unwrap(),
             page_type: PageType::Plain(PlainPageType::Keys),
             next_page: PageIndex::try_from(51).unwrap(),
-            unknown1: 13484,
+            page_sequence: 13484,
             unknown2: 0,
             packed_row_counts: PackedRowCounts::new()
                 .with_num_rows(0)
@@ -716,8 +716,8 @@ fn allocate_row_full_page() {
         },
         content: PageContent::Data(DataPageContent {
             header: DataPageHeader {
-                unknown5: 0,
-                unknown_not_num_rows_large: 0,
+                transaction_row_count: 0,
+                transaction_row_index: 0,
                 unknown6: 0,
                 unknown7: 0,
             },

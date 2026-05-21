@@ -12,7 +12,9 @@ use std::io::{Read, Seek, Write};
 
 use super::io::Database;
 use super::string::DeviceSQLString;
-use super::{Color, ColumnEntry, History, Key, KeyId, Menu, MenuVisibility, PlainRow, Row};
+use super::{
+    Color, ColumnEntry, History, Key, KeyId, Menu, MenuVisibility, PlainRow, Row, Unknown18Row,
+};
 use crate::util::ColorIndex;
 use crate::Result;
 
@@ -22,18 +24,19 @@ pub const DEFAULT_HISTORY_VERSION: &str = "1000";
 /// Insert the rows present in a freshly exported blank `export.pdb`.
 ///
 /// This mirrors `data/incremental/000/export.pdb`: colors, metadata columns,
-/// menu definitions, and a single history sync row. It intentionally does not
-/// insert any key rows because Rekordbox leaves that table empty in a blank
-/// export.
+/// menu definitions, table-18 seed rows, and a single history sync row. It
+/// intentionally does not insert any key rows because Rekordbox leaves that
+/// table empty in a blank export.
 pub fn insert_initial_content<IO: Read + Write + Seek>(
     db: &mut Database<IO>,
     history_date: DeviceSQLString,
     history_label: DeviceSQLString,
 ) -> Result<()> {
+    insert_default_history_row(db, history_date, history_label)?;
     insert_standard_colors(db)?;
     insert_default_columns(db)?;
     insert_default_menu_rows(db)?;
-    insert_default_history_row(db, history_date, history_label)?;
+    insert_default_unknown18_rows(db)?;
     Ok(())
 }
 
@@ -98,6 +101,15 @@ pub fn insert_default_history_row<IO: Read + Write + Seek>(
         DEFAULT_HISTORY_VERSION.parse()?,
         history_label,
     ))))?;
+    Ok(())
+}
+
+/// Insert the fixed rows present in table 18 of a blank Rekordbox export.
+pub fn insert_default_unknown18_rows<IO: Read + Write + Seek>(db: &mut Database<IO>) -> Result<()> {
+    for row in DEFAULT_UNKNOWN18_ROWS {
+        db.insert_row(Row::Unknown18(*row))?;
+    }
+
     Ok(())
 }
 
@@ -194,12 +206,32 @@ const DEFAULT_MENU_ROWS: &[(u16, u16, u8, MenuVisibility, u16)] = &[
     (22, 27, 99, MenuVisibility::Visible, 10),
 ];
 
+const DEFAULT_UNKNOWN18_ROWS: &[Unknown18Row] = &[
+    Unknown18Row::new(1, 6, 0x0001, 0),
+    Unknown18Row::new(21, 7, 0x0001, 0),
+    Unknown18Row::new(14, 8, 0x0001, 0),
+    Unknown18Row::new(8, 9, 0x0001, 0),
+    Unknown18Row::new(9, 10, 0x0001, 0),
+    Unknown18Row::new(10, 11, 0x0001, 0),
+    Unknown18Row::new(15, 13, 0x0001, 0),
+    Unknown18Row::new(13, 15, 0x0001, 0),
+    Unknown18Row::new(23, 16, 0x0001, 0),
+    Unknown18Row::new(22, 17, 0x0001, 0),
+    Unknown18Row::new(25, 0, 0x0100, 0),
+    Unknown18Row::new(26, 1, 0x0200, 0),
+    Unknown18Row::new(2, 2, 0x0300, 0),
+    Unknown18Row::new(3, 3, 0x0400, 0),
+    Unknown18Row::new(5, 4, 0x0500, 0),
+    Unknown18Row::new(6, 5, 0x0600, 0),
+    Unknown18Row::new(11, 12, 0x0700, 0),
+];
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
 
     use super::*;
-    use crate::pdb::DatabaseType;
+    use crate::pdb::{DatabaseType, PageContent, PageIndex, PageType};
     use fallible_iterator::FallibleIterator;
 
     #[test]
@@ -214,9 +246,61 @@ mod tests {
         assert_eq!(db.iter_rows::<Menu>()?.count()?, 22);
         assert_eq!(db.iter_rows::<History>()?.count()?, 1);
         assert_eq!(db.iter_rows::<Key>()?.count()?, 0);
+        assert_eq!(db.iter_rows::<Unknown18Row>()?.count()?, 17);
 
         insert_standard_keys(&mut db)?;
         assert_eq!(db.iter_rows::<Key>()?.count()?, 24);
+
+        Ok(())
+    }
+
+    #[test]
+    fn blank_export_defaults_seed_table18_like_rekordbox() -> Result<()> {
+        let cursor = Cursor::new(Vec::new());
+        let mut db = Database::create(cursor, DatabaseType::Plain)?;
+
+        insert_initial_content(&mut db, "2025-10-29".parse()?, "".parse()?)?;
+
+        let table18 = db
+            .get_header()
+            .find_table(PageType::Unknown(18))
+            .expect("plain PDBs always contain table 18")
+            .1
+            .clone();
+
+        assert_eq!(table18.first_page, PageIndex(37));
+        assert_eq!(table18.last_page, PageIndex(38));
+        assert_eq!(table18.empty_candidate, 45);
+        assert_eq!(db.get_header().next_page_sequence, 6);
+
+        {
+            let table18_page = db.load_page(table18.last_page)?;
+            assert_eq!(table18_page.header.next_page, PageIndex(45));
+            assert_eq!(table18_page.header.page_sequence, 5);
+
+            let PageContent::Data(data) = &table18_page.content else {
+                panic!("table 18 should have a data page after seeding");
+            };
+            assert_eq!(data.header.transaction_row_count, 0);
+            assert_eq!(
+                data.row_groups
+                    .iter()
+                    .map(|group| (group.row_presence_flags, group.transaction_row_flags))
+                    .collect::<Vec<_>>(),
+                vec![(0xffff, 0x0000), (0x0001, 0x0000)]
+            );
+            assert_eq!(
+                data.rows
+                    .values()
+                    .map(|row| *row.as_variant::<Unknown18Row>().expect("table 18 row type"))
+                    .collect::<Vec<_>>(),
+                DEFAULT_UNKNOWN18_ROWS
+            );
+        }
+
+        let history_page = db.load_page(PageIndex(40))?;
+        assert_eq!(history_page.header.used_size, 32);
+        assert_eq!(history_page.header.free_size, 4018);
 
         Ok(())
     }

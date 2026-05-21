@@ -79,21 +79,21 @@ impl PackedRowCounts {
 #[br(little, map = Self::from_bytes)]
 #[bw(little, map = |x: &Self| x.into_bytes())]
 pub struct PageFlags {
-    /// Unknown flag that appears to never be set.
+    /// Unknown flag that is unset in all known exports.
     pub unknown0: bool,
-    /// Unknown flag that appears to never be set.
+    /// Unknown flag that is unset in all known exports.
     pub unknown1: bool,
-    /// Unknown flag that appears to always be set.
+    /// Unknown flag that is set in all known exports.
     pub unknown2: bool,
-    /// Unknown flag that appears to never be set.
+    /// Unknown flag that is unset in all known exports.
     pub unknown3: bool,
-    /// Flag set when the page contains a deleted row.
-    pub contains_deleted: bool,
-    /// Unknown flag that appears to always be set.
+    /// Set when a data page contains deleted or otherwise invalid rows.
+    pub has_deleted_rows: bool,
+    /// Unknown flag that is set in all known exports.
     pub unknown5: bool,
-    /// Determines if the page is an index page.
-    pub is_index_page: bool,
-    /// Unknown flag that appears to never be set.
+    /// Set when the page contains free-space entries rather than table rows.
+    pub is_free_space_page: bool,
+    /// Unknown flag that is unset in all known exports.
     pub unknown7: bool,
 }
 
@@ -104,9 +104,9 @@ impl Default for PageFlags {
             .with_unknown1(false)
             .with_unknown2(true)
             .with_unknown3(false)
-            .with_contains_deleted(false)
+            .with_has_deleted_rows(false)
             .with_unknown5(true)
-            .with_is_index_page(false)
+            .with_is_free_space_page(false)
             .with_unknown7(false)
     }
 }
@@ -114,12 +114,12 @@ impl Default for PageFlags {
 impl PageFlags {
     /// Create a `PageFlags` for a typical data page.
     pub fn new_data_page() -> Self {
-        Self::default().with_is_index_page(false)
+        Self::default().with_is_free_space_page(false)
     }
 
-    /// Create a `PageFlags` for a typical index page.
-    pub fn new_index_page() -> Self {
-        Self::default().with_is_index_page(true)
+    /// Create a `PageFlags` for a typical free-space page.
+    pub fn new_free_space_page() -> Self {
+        Self::default().with_is_free_space_page(true)
     }
 }
 
@@ -128,8 +128,8 @@ mod test {
     use super::*;
 
     #[test]
-    fn test_page_flags_index() {
-        let flags = PageFlags::new_index_page();
+    fn test_page_flags_free_space() {
+        let flags = PageFlags::new_free_space_page();
         assert_eq!(flags.into_bytes(), [0x64]);
     }
 
@@ -138,7 +138,7 @@ mod test {
         let mut flags = PageFlags::new_data_page();
         assert_eq!(flags.into_bytes(), [0x24]);
 
-        flags.set_contains_deleted(true);
+        flags.set_has_deleted_rows(true);
         assert_eq!(flags.into_bytes(), [0x34]);
     }
 }

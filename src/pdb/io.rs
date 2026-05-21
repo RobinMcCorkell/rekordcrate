@@ -44,6 +44,7 @@ struct LazyDatabase {
 #[derive(Debug, PartialEq, Clone)]
 enum LazyPage {
     NotLoaded,
+    Unwritten(Page),
     Loaded(Page),
 }
 
@@ -59,6 +60,11 @@ impl BinWrite for LazyPage {
         match self {
             LazyPage::NotLoaded => {
                 // Just seek forward without writing anything.
+                writer.seek(SeekFrom::Current(page_size as i64))?;
+                Ok(())
+            }
+            LazyPage::Unwritten(_) => {
+                // Keep synthetic empty-candidate pages out of the serialized file until promoted.
                 writer.seek(SeekFrom::Current(page_size as i64))?;
                 Ok(())
             }
@@ -118,6 +124,7 @@ impl<R: Read + Seek> Database<R> {
             *page_entry = LazyPage::Loaded(page);
         }
         match page_entry {
+            LazyPage::Unwritten(page) => Ok(page),
             LazyPage::Loaded(page) => Ok(page),
             _ => unreachable!(),
         }
@@ -215,6 +222,39 @@ impl<R: Read + Seek> Database<R> {
 }
 
 impl<RW: Read + Write + Seek> Database<RW> {
+    fn blank_data_page(
+        page_index: PageIndex,
+        page_type: PageType,
+        next_page: PageIndex,
+        page_sequence: u32,
+        page_size: u32,
+    ) -> Page {
+        let free_size = DataPageContent::page_heap_size(page_size) as u16;
+        Page {
+            header: PageHeader {
+                page_index,
+                page_type,
+                next_page,
+                page_sequence,
+                unknown2: 0,
+                packed_row_counts: PackedRowCounts::default(),
+                page_flags: PageFlags::new_data_page(),
+                free_size,
+                used_size: 0,
+            },
+            content: PageContent::Data(DataPageContent {
+                header: DataPageHeader {
+                    transaction_row_count: 0,
+                    transaction_row_index: 0,
+                    unknown6: 0,
+                    unknown7: 0,
+                },
+                row_groups: vec![],
+                rows: BTreeMap::new(),
+            }),
+        }
+    }
+
     /// Opens a PDB database for reading and writing.
     pub fn open(mut io: RW, db_type: DatabaseType) -> RekordcrateResult<Self> {
         let endian = Endian::Little;
@@ -254,7 +294,7 @@ impl<RW: Read + Write + Seek> Database<RW> {
             PageType::Plain(PlainPageType::History),
         ];
 
-        // Each table gets two pages: an index page (odd-numbered) followed by a data page
+        // Each table gets two pages: a free-space page (odd-numbered) followed by a data page
         // (even-numbered). `next_unused_page` points past the last page (1..=2*NUM_TABLES).
         let next_unused_page = PageIndex(NUM_TABLES * 2 + 1);
 
@@ -278,38 +318,37 @@ impl<RW: Read + Write + Seek> Database<RW> {
             num_tables: NUM_TABLES,
             next_unused_page,
             unknown: 5,
-            sequence: 1,
+            next_page_sequence: 1,
             tables,
         };
 
-        let free_size = DataPageContent::page_heap_size(PAGE_SIZE) as u16;
         let mut pages: Vec<LazyPage> = Vec::with_capacity(NUM_TABLES as usize * 2);
 
         for (i, &page_type) in page_types.iter().enumerate() {
             let index_page_idx = PageIndex(i as u32 * 2 + 1);
             let data_page_idx = PageIndex(i as u32 * 2 + 2);
 
-            // Index page for this table. CDJ hardware requires index pages to be present
+            // Free-space page for this table. CDJ hardware requires these pages to be present
             // at the start of each table's page chain.
             pages.push(LazyPage::Loaded(Page {
                 header: PageHeader {
                     page_index: index_page_idx,
                     page_type,
                     next_page: data_page_idx,
-                    unknown1: 1,
+                    page_sequence: 1,
                     unknown2: 0,
                     packed_row_counts: PackedRowCounts::default(),
-                    page_flags: PageFlags::new_index_page(),
+                    page_flags: PageFlags::new_free_space_page(),
                     free_size: 0,
                     used_size: 0,
                 },
-                content: PageContent::Index(IndexPageContent {
-                    header: IndexPageHeader {
+                content: PageContent::FreeSpace(FreeSpacePageContent {
+                    header: FreeSpacePageHeader {
                         unknown_a: 0x1FFF,
                         unknown_b: 0x1FFF,
                         next_offset: 0,
                         page_index: index_page_idx,
-                        // Null sentinel for an empty-table index page.
+                        // Null sentinel for an empty-table free-space page.
                         next_page: PageIndex(0x03FF_FFFF),
                         num_entries: 0,
                         first_empty: 0x1FFF,
@@ -319,29 +358,13 @@ impl<RW: Read + Write + Seek> Database<RW> {
             }));
 
             // Data page for this table (initially empty).
-            pages.push(LazyPage::Loaded(Page {
-                header: PageHeader {
-                    page_index: data_page_idx,
-                    page_type,
-                    next_page: next_unused_page,
-                    unknown1: 1,
-                    unknown2: 0,
-                    packed_row_counts: PackedRowCounts::default(),
-                    page_flags: PageFlags::new_data_page(),
-                    free_size,
-                    used_size: 0,
-                },
-                content: PageContent::Data(DataPageContent {
-                    header: DataPageHeader {
-                        unknown5: 0,
-                        unknown_not_num_rows_large: 0,
-                        unknown6: 0,
-                        unknown7: 0,
-                    },
-                    row_groups: vec![],
-                    rows: BTreeMap::new(),
-                }),
-            }));
+            pages.push(LazyPage::Unwritten(Self::blank_data_page(
+                data_page_idx,
+                page_type,
+                next_unused_page,
+                1,
+                PAGE_SIZE,
+            )));
         }
 
         let mut db = Self {
@@ -369,8 +392,7 @@ impl<RW: Read + Write + Seek> Database<RW> {
         let page_size = self.content.header.page_size;
         let new_ec_idx = self.content.header.next_unused_page;
         let after_new_ec = PageIndex(new_ec_idx.0 + 1);
-        let free_size = DataPageContent::page_heap_size(page_size) as u16;
-
+        let allocation_generation = new_ec_idx.0 - self.content.header.num_tables * 2;
         // Ensure the EC page is in memory, then point it at the new EC.
         let ec_slice_idx = ec_idx.0 as usize - 1;
         let needs_load = matches!(
@@ -378,11 +400,20 @@ impl<RW: Read + Write + Seek> Database<RW> {
             Some(LazyPage::NotLoaded)
         );
         if needs_load {
-            let mut page = read_page(&mut self.io, ec_idx, page_size, self.db_type)?;
-            page.header.next_page = new_ec_idx;
+            let page = Self::blank_data_page(
+                ec_idx,
+                page_type,
+                new_ec_idx,
+                allocation_generation,
+                page_size,
+            );
             self.content.pages[ec_slice_idx] = LazyPage::Loaded(page);
-        } else if let Some(LazyPage::Loaded(page)) = self.content.pages.get_mut(ec_slice_idx) {
+        } else if let Some(LazyPage::Unwritten(page) | LazyPage::Loaded(page)) =
+            self.content.pages.get_mut(ec_slice_idx)
+        {
             page.header.next_page = new_ec_idx;
+            page.header.page_sequence = allocation_generation;
+            self.content.pages[ec_slice_idx] = LazyPage::Loaded(page.clone());
         }
 
         // Update table metadata.
@@ -390,31 +421,19 @@ impl<RW: Read + Write + Seek> Database<RW> {
         table.last_page = ec_idx;
         table.empty_candidate = new_ec_idx.0;
         self.content.header.next_unused_page = after_new_ec;
+        self.content.header.next_page_sequence += 1;
 
-        // Allocate the new empty-candidate page.
-        self.content.pages.push(LazyPage::Loaded(Page {
-            header: PageHeader {
-                page_index: new_ec_idx,
+        // Rekordbox updates the header pointers for freshly allocated empty-candidate pages
+        // but does not serialize their blank page bodies until they are promoted.
+        self.content
+            .pages
+            .push(LazyPage::Unwritten(Self::blank_data_page(
+                new_ec_idx,
                 page_type,
-                next_page: after_new_ec,
-                unknown1: 0,
-                unknown2: 0,
-                packed_row_counts: PackedRowCounts::default(),
-                page_flags: PageFlags::new_data_page(),
-                free_size,
-                used_size: 0,
-            },
-            content: PageContent::Data(DataPageContent {
-                header: DataPageHeader {
-                    unknown5: 0,
-                    unknown_not_num_rows_large: 0,
-                    unknown6: 0,
-                    unknown7: 0,
-                },
-                row_groups: vec![],
-                rows: BTreeMap::new(),
-            }),
-        }));
+                after_new_ec,
+                allocation_generation + 1,
+                page_size,
+            )));
 
         Ok(())
     }
@@ -444,11 +463,11 @@ impl<RW: Read + Write + Seek> Database<RW> {
             let promoted_idx = PageIndex(empty_candidate);
             self.promote_ec_to_data_page(page_type, promoted_idx)?;
 
-            // Also update the inner IndexPageHeader.next_page so rekordbox can find the
+            // Also update the inner FreeSpacePageHeader.next_page so rekordbox can find the
             // first data page (the sentinel is only correct for truly empty tables).
             let index_slice = first_page.0 as usize - 1;
             if let Some(LazyPage::Loaded(page)) = self.content.pages.get_mut(index_slice) {
-                if let PageContent::Index(ref mut idx) = page.content {
+                if let PageContent::FreeSpace(ref mut idx) = page.content {
                     idx.header.next_page = promoted_idx;
                 }
             }
@@ -601,6 +620,7 @@ impl<'db, R: Read + Seek> FallibleIterator for PageIterator<'db, R> {
                     *page_entry = LazyPage::Loaded(page);
                 }
                 let page: &'db mut Page = match page_entry {
+                    LazyPage::Unwritten(page) => page,
                     LazyPage::Loaded(page) => page,
                     _ => unreachable!(),
                 };
@@ -619,7 +639,9 @@ impl<'db, R: Read + Seek> FallibleIterator for PageIterator<'db, R> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::pdb::defaults;
     use std::fs::File;
+    use std::io::Cursor;
 
     #[test]
     fn test_pageiterator_safety() {
@@ -653,5 +675,20 @@ mod test {
         let _iter3 = db
             .iter_pages(PageType::Plain(PlainPageType::Tracks))
             .unwrap();
+    }
+
+    #[test]
+    fn trailing_empty_candidates_are_not_serialized() {
+        let cursor = Cursor::new(Vec::<u8>::new());
+        let mut db = Database::create(cursor, DatabaseType::Plain).unwrap();
+        defaults::insert_initial_content(
+            &mut db,
+            "2025-01-01".parse().unwrap(),
+            "".parse().unwrap(),
+        )
+        .unwrap();
+        db.flush().unwrap();
+
+        assert_eq!(db.file_size().unwrap(), 41 * 4096);
     }
 }
