@@ -8,9 +8,9 @@
 
 //! Reader and writer for Rekordbox Device Library Plus (`exportLibrary.db`) databases.
 
+pub mod defaults;
 mod model;
 mod schema;
-pub mod defaults;
 
 use diesel::connection::SimpleConnection;
 use diesel::sqlite::SqliteConnection;

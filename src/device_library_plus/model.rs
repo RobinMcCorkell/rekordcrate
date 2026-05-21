@@ -82,7 +82,11 @@ where
         <Find<<Self as HasTable>::Table, Self::Id> as SelectDsl<AsSelect<Self, Sqlite>>>::Output:
             for<'query> LoadQuery<'query, SqliteConnection, Self>,
     {
-        Self::table().find(id).select(Self::as_select()).get_result(conn).optional()
+        Self::table()
+            .find(id)
+            .select(Self::as_select())
+            .get_result(conn)
+            .optional()
     }
 }
 
@@ -149,9 +153,22 @@ macro_rules! impl_id_conversions {
     }
 }
 impl_id_conversions!(
-    AlbumId, ArtistId, CategoryId, ColorId, ContentId, CueId, GenreId,
-    HistoryId, HotCueBankListId, ImageId, KeyId, LabelId, MenuItemId,
-    MyTagId, PlaylistId, SortId,
+    AlbumId,
+    ArtistId,
+    CategoryId,
+    ColorId,
+    ContentId,
+    CueId,
+    GenreId,
+    HistoryId,
+    HotCueBankListId,
+    ImageId,
+    KeyId,
+    LabelId,
+    MenuItemId,
+    MyTagId,
+    PlaylistId,
+    SortId,
 );
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -530,40 +547,138 @@ impl ContentBuilder {
         })
     }
 
-    pub fn build(self) -> Content { self.0 }
+    pub fn build(self) -> Content {
+        self.0
+    }
 
-    pub fn title(mut self, v: impl Into<String>) -> Self { self.0.title = Some(v.into()); self }
-    pub fn bpmx100(mut self, v: i32) -> Self { self.0.bpmx100 = Some(v); self }
-    pub fn length(mut self, v: i32) -> Self { self.0.length = Some(v); self }
-    pub fn track_no(mut self, v: i32) -> Self { self.0.track_no = Some(v); self }
-    pub fn artist_id_artist(mut self, v: ArtistId) -> Self { self.0.artist_id_artist = Some(v); self }
-    pub fn album_id(mut self, v: AlbumId) -> Self { self.0.album_id = Some(v); self }
-    pub fn genre_id(mut self, v: GenreId) -> Self { self.0.genre_id = Some(v); self }
-    pub fn key_id(mut self, v: KeyId) -> Self { self.0.key_id = Some(v); self }
-    pub fn color_id(mut self, v: ColorId) -> Self { self.0.color_id = Some(v); self }
-    pub fn dj_comment(mut self, v: impl Into<String>) -> Self { self.0.dj_comment = Some(v.into()); self }
-    pub fn rating(mut self, v: i32) -> Self { self.0.rating = Some(v); self }
-    pub fn release_year(mut self, v: i32) -> Self { self.0.release_year = Some(v); self }
-    pub fn date_created(mut self, v: impl Into<String>) -> Self { self.0.date_created = Some(v.into()); self }
-    pub fn date_added(mut self, v: impl Into<String>) -> Self { self.0.date_added = Some(v.into()); self }
-    pub fn path(mut self, v: impl Into<String>) -> Self { self.0.path = Some(v.into()); self }
-    pub fn file_name(mut self, v: impl Into<String>) -> Self { self.0.file_name = Some(v.into()); self }
-    pub fn file_size(mut self, v: i32) -> Self { self.0.file_size = Some(v); self }
-    pub fn file_type(mut self, v: ContentFileType) -> Self { self.0.file_type = Some(v.into()); self }
-    pub fn bitrate(mut self, v: i32) -> Self { self.0.bitrate = Some(v); self }
-    pub fn sampling_rate(mut self, v: i32) -> Self { self.0.sampling_rate = Some(v); self }
-    pub fn dj_play_count(mut self, v: i32) -> Self { self.0.dj_play_count = Some(v); self }
-    pub fn hot_cue_auto_load(mut self, v: BinaryFlag) -> Self { self.0.is_hot_cue_auto_load_on = Some(v.into()); self }
-    pub fn kuvo_deliver_status(mut self, v: BinaryFlag) -> Self { self.0.is_kuvo_deliver_status_on = Some(v.into()); self }
-    pub fn analysed_bits(mut self, v: i32) -> Self { self.0.analysed_bits = Some(v); self }
-    pub fn analysis_data_file_path(mut self, v: impl Into<String>) -> Self { self.0.analysis_data_file_path = Some(v.into()); self }
-    pub fn has_modified(mut self, v: BinaryFlag) -> Self { self.0.has_modified = Some(v.into()); self }
-    pub fn cue_update_count(mut self, v: i32) -> Self { self.0.cue_update_count = Some(v); self }
-    pub fn analysis_data_update_count(mut self, v: i32) -> Self { self.0.analysis_data_update_count = Some(v); self }
-    pub fn information_update_count(mut self, v: i32) -> Self { self.0.information_update_count = Some(v); self }
-    pub fn master_db_id(mut self, v: i32) -> Self { self.0.master_db_id = Some(v); self }
-    pub fn master_content_id(mut self, v: i32) -> Self { self.0.master_content_id = Some(v); self }
-    pub fn content_link(mut self, v: i32) -> Self { self.0.content_link = Some(v); self }
+    pub fn title(mut self, v: impl Into<String>) -> Self {
+        self.0.title = Some(v.into());
+        self
+    }
+    pub fn bpmx100(mut self, v: i32) -> Self {
+        self.0.bpmx100 = Some(v);
+        self
+    }
+    pub fn length(mut self, v: i32) -> Self {
+        self.0.length = Some(v);
+        self
+    }
+    pub fn track_no(mut self, v: i32) -> Self {
+        self.0.track_no = Some(v);
+        self
+    }
+    pub fn artist_id_artist(mut self, v: ArtistId) -> Self {
+        self.0.artist_id_artist = Some(v);
+        self
+    }
+    pub fn album_id(mut self, v: AlbumId) -> Self {
+        self.0.album_id = Some(v);
+        self
+    }
+    pub fn genre_id(mut self, v: GenreId) -> Self {
+        self.0.genre_id = Some(v);
+        self
+    }
+    pub fn key_id(mut self, v: KeyId) -> Self {
+        self.0.key_id = Some(v);
+        self
+    }
+    pub fn color_id(mut self, v: ColorId) -> Self {
+        self.0.color_id = Some(v);
+        self
+    }
+    pub fn dj_comment(mut self, v: impl Into<String>) -> Self {
+        self.0.dj_comment = Some(v.into());
+        self
+    }
+    pub fn rating(mut self, v: i32) -> Self {
+        self.0.rating = Some(v);
+        self
+    }
+    pub fn release_year(mut self, v: i32) -> Self {
+        self.0.release_year = Some(v);
+        self
+    }
+    pub fn date_created(mut self, v: impl Into<String>) -> Self {
+        self.0.date_created = Some(v.into());
+        self
+    }
+    pub fn date_added(mut self, v: impl Into<String>) -> Self {
+        self.0.date_added = Some(v.into());
+        self
+    }
+    pub fn path(mut self, v: impl Into<String>) -> Self {
+        self.0.path = Some(v.into());
+        self
+    }
+    pub fn file_name(mut self, v: impl Into<String>) -> Self {
+        self.0.file_name = Some(v.into());
+        self
+    }
+    pub fn file_size(mut self, v: i32) -> Self {
+        self.0.file_size = Some(v);
+        self
+    }
+    pub fn file_type(mut self, v: ContentFileType) -> Self {
+        self.0.file_type = Some(v.into());
+        self
+    }
+    pub fn bitrate(mut self, v: i32) -> Self {
+        self.0.bitrate = Some(v);
+        self
+    }
+    pub fn sampling_rate(mut self, v: i32) -> Self {
+        self.0.sampling_rate = Some(v);
+        self
+    }
+    pub fn dj_play_count(mut self, v: i32) -> Self {
+        self.0.dj_play_count = Some(v);
+        self
+    }
+    pub fn hot_cue_auto_load(mut self, v: BinaryFlag) -> Self {
+        self.0.is_hot_cue_auto_load_on = Some(v.into());
+        self
+    }
+    pub fn kuvo_deliver_status(mut self, v: BinaryFlag) -> Self {
+        self.0.is_kuvo_deliver_status_on = Some(v.into());
+        self
+    }
+    pub fn analysed_bits(mut self, v: i32) -> Self {
+        self.0.analysed_bits = Some(v);
+        self
+    }
+    pub fn analysis_data_file_path(mut self, v: impl Into<String>) -> Self {
+        self.0.analysis_data_file_path = Some(v.into());
+        self
+    }
+    pub fn has_modified(mut self, v: BinaryFlag) -> Self {
+        self.0.has_modified = Some(v.into());
+        self
+    }
+    pub fn cue_update_count(mut self, v: i32) -> Self {
+        self.0.cue_update_count = Some(v);
+        self
+    }
+    pub fn analysis_data_update_count(mut self, v: i32) -> Self {
+        self.0.analysis_data_update_count = Some(v);
+        self
+    }
+    pub fn information_update_count(mut self, v: i32) -> Self {
+        self.0.information_update_count = Some(v);
+        self
+    }
+    pub fn master_db_id(mut self, v: i32) -> Self {
+        self.0.master_db_id = Some(v);
+        self
+    }
+    pub fn master_content_id(mut self, v: i32) -> Self {
+        self.0.master_content_id = Some(v);
+        self
+    }
+    pub fn content_link(mut self, v: i32) -> Self {
+        self.0.content_link = Some(v);
+        self
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Queryable, Selectable, Insertable, Identifiable)]
@@ -614,7 +729,10 @@ impl IdentifiableRecord for Genre {
 
 impl Genre {
     pub fn new(genre_id: GenreId, name: impl Into<String>) -> Self {
-        Self { genre_id, name: name.into() }
+        Self {
+            genre_id,
+            name: name.into(),
+        }
     }
 }
 

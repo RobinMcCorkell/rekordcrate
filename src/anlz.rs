@@ -1114,7 +1114,11 @@ impl Cue {
                 total_size: Self::TOTAL_SIZE,
             },
             hot_cue,
-            status: if matches!(cue_type, CueType::Loop) { 4 } else { 0 },
+            status: if matches!(cue_type, CueType::Loop) {
+                4
+            } else {
+                0
+            },
             // This constant value appears in all observed Rekordbox exports.
             unknown1: 0x00010000,
             order_first,
