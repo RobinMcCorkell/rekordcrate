@@ -88,6 +88,26 @@ pub enum ContentKind {
     /// Used in `.EXT` files.
     #[brw(magic = b"PWV5")]
     WaveformColorDetail,
+    /// Fixed-width 3-byte whole-track waveform payload used by the `.2EX` renderer.
+    ///
+    /// All reference files seen so far use 1200 entries with 3 bytes each. Desktop Rekordbox
+    /// visibly changes the whole-track preview when this section is removed or mangled, so this is
+    /// currently the strongest candidate for the modern `.2EX` overview waveform payload.
+    #[brw(magic = b"PWV6")]
+    WaveformHighResolutionPreview,
+    /// Variable-width 3-byte waveform payload used by the `.2EX` renderer.
+    ///
+    /// In all observed files this has 3-byte entries, the same entry count as `PWV3`/`PWV5`, and
+    /// an observed constant header field of `0x00960000`. Mangling it has not yet produced an
+    /// obvious desktop UI change, so it currently looks like an auxiliary or alternate renderer
+    /// input rather than the primary visible waveform payload.
+    #[brw(magic = b"PWV7")]
+    WaveformHighResolutionDetail,
+    /// Per-band gain calibration for the high-resolution player waveform.
+    ///
+    /// Used in `.2EX` files.
+    #[brw(magic = b"PWVC")]
+    WaveformColorCalibration,
     /// Describes the structure of a sond (Intro, Chrous, Verse, etc.).
     ///
     /// Used in `.EXT` files.
@@ -266,10 +286,11 @@ pub struct ExtendedCue {
     pub loop_denominator: u16,
     /// Length of the comment string in bytes.
     #[br(temp)]
-    #[bw(calc = (comment.len() as u32 + 1) * 2)]
+    #[bw(calc = Self::comment_storage_len(&comment))]
     len_comment: u32,
     /// An UTF-16BE encoded string, followed by a trailing  `0x0000`.
-    #[br(assert((comment.len() as u32 + 1) * 2 == len_comment))]
+    #[br(args(len_comment), parse_with = Self::read_comment)]
+    #[bw(args(len_comment), write_with = Self::write_comment)]
     pub comment: NullWideString,
     /// Rekordbox hotcue color index.
     ///
@@ -355,6 +376,54 @@ pub struct ExtendedCue {
     unknown9: u32,
     /// Unknown field.
     unknown10: u32,
+    /// Unknown field.
+    unknown11: u32,
+    /// Unknown field.
+    unknown12: u32,
+    /// Unknown field.
+    unknown13: u32,
+    /// Unknown field.
+    unknown14: u32,
+    /// Unknown field.
+    unknown15: u32,
+}
+
+impl ExtendedCue {
+    fn comment_storage_len(comment: &NullWideString) -> u32 {
+        if comment.is_empty() {
+            0
+        } else {
+            (comment.len() as u32 + 1) * 2
+        }
+    }
+
+    fn read_comment<R: Read + Seek>(
+        reader: &mut R,
+        endian: Endian,
+        (len_comment,): (u32,),
+    ) -> BinResult<NullWideString> {
+        if len_comment == 0 {
+            return Ok(NullWideString::from(String::new()));
+        }
+
+        let comment = NullWideString::read_options(reader, endian, ())?;
+        assert!((comment.len() as u32 + 1) * 2 == len_comment);
+        Ok(comment)
+    }
+
+    fn write_comment<W: Write + Seek>(
+        comment: &NullWideString,
+        writer: &mut W,
+        endian: Endian,
+        (len_comment,): (u32,),
+    ) -> BinResult<()> {
+        if len_comment == 0 {
+            return Ok(());
+        }
+
+        assert_eq!((comment.len() as u32 + 1) * 2, len_comment);
+        comment.write_options(writer, endian, ())
+    }
 }
 
 impl Default for WaveformPreviewColumn {
@@ -585,6 +654,17 @@ pub enum Content {
     /// Used in `.EXT` files.
     #[br(pre_assert(header.kind == ContentKind::WaveformColorDetail))]
     WaveformColorDetail(#[br(args(header.clone()))] WaveformColorDetail),
+    /// Fixed-width 3-byte whole-track waveform payload used by the `.2EX` renderer.
+    #[br(pre_assert(header.kind == ContentKind::WaveformHighResolutionPreview))]
+    WaveformHighResolutionPreview(#[br(args(header.clone()))] WaveformHighResolutionPreview),
+    /// Variable-width 3-byte waveform payload used by the `.2EX` renderer.
+    #[br(pre_assert(header.kind == ContentKind::WaveformHighResolutionDetail))]
+    WaveformHighResolutionDetail(#[br(args(header.clone()))] WaveformHighResolutionDetail),
+    /// Per-band gain calibration for the high-resolution player waveform.
+    ///
+    /// Used in `.2EX` files.
+    #[br(pre_assert(header.kind == ContentKind::WaveformColorCalibration))]
+    WaveformColorCalibration(#[br(args(header.clone()))] WaveformColorCalibration),
     /// Describes the structure of a sond (Intro, Chrous, Verse, etc.).
     ///
     /// Used in `.EXT` files.
@@ -796,6 +876,80 @@ pub struct WaveformColorDetail {
     /// Waveform detail column data.
     #[br(count = len_entries)]
     pub data: Vec<WaveformColorDetailColumn>,
+}
+
+/// Fixed-width 3-byte whole-track waveform payload used by the `.2EX` renderer.
+///
+/// All sampled Rekordbox exports use 1200 entries here, matching the fixed-width color preview.
+/// The parser intentionally accepts any length to avoid rejecting unseen variants.
+#[binrw]
+#[derive(Debug, PartialEq, Eq)]
+#[br(import(header: Header))]
+pub struct WaveformHighResolutionPreview {
+    /// Size of a single entry, always 3 in all observed files.
+    #[br(temp)]
+    #[br(assert(len_entry_bytes == 3))]
+    #[bw(calc = 3u32)]
+    len_entry_bytes: u32,
+    /// Number of entries in this section.
+    ///
+    /// All currently known files use 1200 entries.
+    #[br(temp)]
+    #[bw(calc = data.len() as u32)]
+    #[br(assert((len_entry_bytes * len_entries) == header.content_size()))]
+    len_entries: u32,
+    /// Raw 3-byte entry data.
+    #[br(count = len_entries)]
+    pub data: Vec<[u8; 3]>,
+}
+
+/// Variable-width 3-byte waveform payload used by the `.2EX` renderer.
+///
+/// In observed files this shares the same entry count as `PWV3`/`PWV5`, but its 3-byte payload is
+/// not a simple expansion of either section.
+#[binrw]
+#[derive(Debug, PartialEq, Eq)]
+#[br(import(header: Header))]
+pub struct WaveformHighResolutionDetail {
+    /// Size of a single entry, always 3 in all observed files.
+    #[br(temp)]
+    #[br(assert(len_entry_bytes == 3))]
+    #[bw(calc = 3u32)]
+    len_entry_bytes: u32,
+    /// Number of entries in this section.
+    #[br(temp)]
+    #[bw(calc = data.len() as u32)]
+    #[br(assert((len_entry_bytes * len_entries) == header.content_size()))]
+    len_entries: u32,
+    /// Observed constant header field.
+    #[br(assert(unknown == 0x00960000))]
+    #[bw(calc = 0x00960000u32)]
+    unknown: u32,
+    /// Raw 3-byte entry data.
+    #[br(count = len_entries)]
+    pub data: Vec<[u8; 3]>,
+}
+
+/// Per-band gain calibration for the high-resolution player waveform.
+///
+/// Used in `.2EX` files.
+#[binrw]
+#[derive(Debug, PartialEq, Eq)]
+#[br(import(header: Header))]
+pub struct WaveformColorCalibration {
+    /// Reserved field. Observed Rekordbox exports always set this to `0`.
+    #[br(temp)]
+    #[br(assert(header.remaining_size() == 2))]
+    #[br(assert(reserved == 0))]
+    #[bw(calc = 0u16)]
+    reserved: u16,
+    /// Gain applied to the low / blue waveform band.
+    #[br(assert(header.content_size() == 6))]
+    pub low_gain: u16,
+    /// Gain applied to the mid / yellow waveform band.
+    pub mid_gain: u16,
+    /// Gain applied to the high / white waveform band.
+    pub high_gain: u16,
 }
 
 /// Describes the structure of a song (Intro, Chrous, Verse, etc.).
@@ -1199,6 +1353,40 @@ impl WaveformColorDetail {
     }
 }
 
+impl WaveformHighResolutionPreview {
+    // Section header size: 12 standard + 4 (len_entry_bytes) + 4 (len_entries) = 20.
+    const SECTION_SIZE: u32 = 20;
+
+    /// Create a new `WaveformHighResolutionPreview` from raw 3-byte entries.
+    pub fn new(data: Vec<[u8; 3]>) -> Self {
+        Self { data }
+    }
+}
+
+impl WaveformHighResolutionDetail {
+    // Section header size: 12 standard + 4 (len_entry_bytes) + 4 (len_entries) + 4 (unknown) = 24.
+    const SECTION_SIZE: u32 = 24;
+
+    /// Create a new `WaveformHighResolutionDetail` from raw 3-byte entries.
+    pub fn new(data: Vec<[u8; 3]>) -> Self {
+        Self { data }
+    }
+}
+
+impl WaveformColorCalibration {
+    // Section header size: 12 standard + 2 reserved bytes = 14.
+    const SECTION_SIZE: u32 = 14;
+
+    /// Create a new `WaveformColorCalibration` section from per-band gains.
+    pub fn new(low_gain: u16, mid_gain: u16, high_gain: u16) -> Self {
+        Self {
+            low_gain,
+            mid_gain,
+            high_gain,
+        }
+    }
+}
+
 impl VBR {
     // Section header size: 12 standard + 4 (unknown1) = 16.
     const SECTION_SIZE: u32 = 16;
@@ -1264,6 +1452,18 @@ impl Section {
                 let content_bytes = wcd.data.len() as u32 * 2;
                 (WaveformColorDetail::SECTION_SIZE, content_bytes)
             }
+            Content::WaveformHighResolutionPreview(wp) => {
+                let content_bytes = wp.data.len() as u32 * 3;
+                (WaveformHighResolutionPreview::SECTION_SIZE, content_bytes)
+            }
+            Content::WaveformHighResolutionDetail(wd) => {
+                let content_bytes = wd.data.len() as u32 * 3;
+                (WaveformHighResolutionDetail::SECTION_SIZE, content_bytes)
+            }
+            Content::WaveformColorCalibration(_) => {
+                let content_bytes = 6;
+                (WaveformColorCalibration::SECTION_SIZE, content_bytes)
+            }
             Content::CueList(cl) => {
                 // list_type + unknown + len_cues + memory_count (12 bytes) in header; cues are content.
                 let content_bytes = cl.cues.len() as u32 * Cue::TOTAL_SIZE;
@@ -1303,11 +1503,126 @@ impl Content {
             Self::WaveformDetail(_) => ContentKind::WaveformDetail,
             Self::WaveformColorPreview(_) => ContentKind::WaveformColorPreview,
             Self::WaveformColorDetail(_) => ContentKind::WaveformColorDetail,
+            Self::WaveformHighResolutionPreview(_) => ContentKind::WaveformHighResolutionPreview,
+            Self::WaveformHighResolutionDetail(_) => ContentKind::WaveformHighResolutionDetail,
+            Self::WaveformColorCalibration(_) => ContentKind::WaveformColorCalibration,
             Self::SongStructure(_) => ContentKind::SongStructure,
             Self::Unknown(u) => panic!(
                 "cannot determine ContentKind for unrecognized section {:?}",
                 u.kind
             ),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use binrw::{BinRead, BinWrite};
+    use std::io::Cursor;
+
+    #[test]
+    fn waveform_color_calibration_roundtrips() {
+        let anlz = ANLZ::new(vec![
+            Section::new(Content::Path(Path::new(NullWideString::from(
+                "/Contents/Test Track.mp3".to_string(),
+            )))),
+            Section::new(Content::WaveformColorCalibration(
+                WaveformColorCalibration::new(80, 100, 100),
+            )),
+        ]);
+
+        let mut cursor = Cursor::new(Vec::new());
+        anlz.write(&mut cursor).unwrap();
+
+        let bytes = cursor.into_inner();
+        assert!(
+            bytes.windows(20).any(|window| {
+                window
+                    == [
+                        b'P', b'W', b'V', b'C', 0x00, 0x00, 0x00, 0x0e, 0x00, 0x00, 0x00, 0x14,
+                        0x00, 0x00, 0x00, 0x50, 0x00, 0x64, 0x00, 0x64,
+                    ]
+            }),
+            "serialized ANLZ should contain a PWVC section with the expected bytes",
+        );
+
+        let parsed = ANLZ::read(&mut Cursor::new(bytes)).unwrap();
+        let calibration = parsed
+            .sections
+            .iter()
+            .find_map(|section| match &section.content {
+                Content::WaveformColorCalibration(calibration) => Some(calibration),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(
+            (calibration.low_gain, calibration.mid_gain, calibration.high_gain),
+            (80, 100, 100)
+        );
+    }
+
+    #[test]
+    fn waveform_high_resolution_sections_roundtrip() {
+        let anlz = ANLZ::new(vec![
+            Section::new(Content::Path(Path::new(NullWideString::from(
+                "/Contents/Test Track.mp3".to_string(),
+            )))),
+            Section::new(Content::WaveformHighResolutionPreview(
+                WaveformHighResolutionPreview::new(vec![[0x01, 0x02, 0x03], [0x10, 0x20, 0x30]]),
+            )),
+            Section::new(Content::WaveformHighResolutionDetail(
+                WaveformHighResolutionDetail::new(vec![[0xaa, 0xbb, 0xcc]]),
+            )),
+        ]);
+
+        let mut cursor = Cursor::new(Vec::new());
+        anlz.write(&mut cursor).unwrap();
+        let parsed = ANLZ::read(&mut Cursor::new(cursor.into_inner())).unwrap();
+
+        let preview = parsed
+            .sections
+            .iter()
+            .find_map(|section| match &section.content {
+                Content::WaveformHighResolutionPreview(preview) => Some(preview),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(preview.data, vec![[0x01, 0x02, 0x03], [0x10, 0x20, 0x30]]);
+
+        let detail = parsed
+            .sections
+            .iter()
+            .find_map(|section| match &section.content {
+                Content::WaveformHighResolutionDetail(detail) => Some(detail),
+                _ => None,
+            })
+            .unwrap();
+        assert_eq!(detail.data, vec![[0xaa, 0xbb, 0xcc]]);
+    }
+
+    #[test]
+    fn real_alpine_ext_with_zero_length_extended_cue_comment_parses() {
+        let bytes = std::fs::read(
+            "mixxx2usb/data/one/PIONEER/USBANLZ/P008/00005980/ANLZ0000.EXT",
+        )
+        .unwrap();
+        let parsed = ANLZ::read(&mut Cursor::new(bytes)).unwrap();
+
+        let hot_extended_cues = parsed
+            .sections
+            .iter()
+            .find_map(|section| match &section.content {
+                Content::ExtendedCueList(list) if list.list_type == CueListType::HotCues => {
+                    Some(&list.cues)
+                }
+                _ => None,
+            })
+            .unwrap();
+
+        assert_eq!(hot_extended_cues.len(), 1);
+        assert_eq!(hot_extended_cues[0].comment, NullWideString::from(String::new()));
+        assert_eq!(hot_extended_cues[0].hot_cue_color_index, 0);
+        assert_eq!(hot_extended_cues[0].hot_cue_color_rgb, (0xff, 0x8c, 0x00));
     }
 }
