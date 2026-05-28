@@ -14,7 +14,7 @@
 use binrw::{BinRead, BinWrite};
 use modular_bitfield::prelude::*;
 
-use crate::pdb::RowGroup;
+use crate::pdb::{PageHeapObject, RowGroup};
 
 /// Packed field found in the page header containing:
 /// - number of used row offsets in the page (13 bits).
@@ -123,6 +123,153 @@ impl PageFlags {
     }
 }
 
+/// Tag/category flags stored in `exportExt.pdb` tag rows.
+///
+/// Real fixtures only toggle bit 24 to distinguish categories from tags.
+#[bitfield(bits = 32)]
+#[derive(BinRead, BinWrite, Debug, PartialEq, Eq, Clone, Copy)]
+#[br(little, map = Self::from_bytes)]
+#[bw(little, map = |x: &Self| x.into_bytes())]
+pub struct TagFlags {
+    pub reserved0: B24,
+    pub is_category: bool,
+    pub reserved1: B7,
+}
+
+impl PageHeapObject for TagFlags {
+    type Args<'a> = ();
+    fn heap_bytes_required(&self, _: ()) -> u16 {
+        std::mem::size_of::<u32>() as u16
+    }
+}
+
+impl TagFlags {
+    /// Create flags for a normal tag row.
+    pub fn new_tag() -> Self {
+        Self::new().with_is_category(false)
+    }
+
+    /// Create flags for a category row.
+    pub fn new_category() -> Self {
+        Self::new().with_is_category(true)
+    }
+}
+
+/// Opaque flag word found in table-7 rows of `exportExt.pdb`.
+#[bitfield(bits = 32)]
+#[derive(BinRead, BinWrite, Debug, PartialEq, Eq, Clone, Copy)]
+#[br(little, map = Self::from_bytes)]
+#[bw(little, map = |x: &Self| x.into_bytes())]
+pub struct Unknown7Flags0 {
+    pub unknown0: bool,
+    pub reserved1_12: B12,
+    pub unknown13: bool,
+    pub reserved14_25: B12,
+    pub unknown26: bool,
+    pub reserved27_28: B2,
+    pub unknown29: bool,
+    pub reserved30_31: B2,
+}
+
+impl PageHeapObject for Unknown7Flags0 {
+    type Args<'a> = ();
+    fn heap_bytes_required(&self, _: ()) -> u16 {
+        std::mem::size_of::<u32>() as u16
+    }
+}
+
+impl Unknown7Flags0 {
+    /// Observed canonical value in every known real `exportExt.pdb`.
+    pub fn canonical() -> Self {
+        Self::new()
+            .with_unknown0(true)
+            .with_unknown13(true)
+            .with_unknown26(true)
+            .with_unknown29(true)
+    }
+}
+
+/// Opaque flag word found in table-7 rows of `exportExt.pdb`.
+#[bitfield(bits = 32)]
+#[derive(BinRead, BinWrite, Debug, PartialEq, Eq, Clone, Copy)]
+#[br(little, map = Self::from_bytes)]
+#[bw(little, map = |x: &Self| x.into_bytes())]
+pub struct Unknown7Flags1 {
+    pub reserved0: B1,
+    pub unknown1: bool,
+    pub unknown2: bool,
+    pub reserved3: B1,
+    pub unknown4: bool,
+    pub reserved5_6: B2,
+    pub unknown7: bool,
+    pub unknown8: bool,
+    pub unknown9: bool,
+    pub unknown10: bool,
+    pub unknown11: bool,
+    pub reserved12_17: B6,
+    pub unknown18: bool,
+    pub unknown19: bool,
+    pub unknown20: bool,
+    pub unknown21: bool,
+    pub reserved22_31: B10,
+}
+
+impl PageHeapObject for Unknown7Flags1 {
+    type Args<'a> = ();
+    fn heap_bytes_required(&self, _: ()) -> u16 {
+        std::mem::size_of::<u32>() as u16
+    }
+}
+
+impl Unknown7Flags1 {
+    /// Observed canonical value in every known real `exportExt.pdb`.
+    pub fn canonical() -> Self {
+        Self::new()
+            .with_unknown1(true)
+            .with_unknown2(true)
+            .with_unknown4(true)
+            .with_unknown7(true)
+            .with_unknown8(true)
+            .with_unknown9(true)
+            .with_unknown10(true)
+            .with_unknown11(true)
+            .with_unknown18(true)
+            .with_unknown19(true)
+            .with_unknown20(true)
+            .with_unknown21(true)
+    }
+}
+
+/// Opaque flag word found in table-7 rows of `exportExt.pdb`.
+#[bitfield(bits = 32)]
+#[derive(BinRead, BinWrite, Debug, PartialEq, Eq, Clone, Copy)]
+#[br(little, map = Self::from_bytes)]
+#[bw(little, map = |x: &Self| x.into_bytes())]
+pub struct Unknown7Flags2 {
+    pub reserved0_7: B8,
+    pub unknown8: bool,
+    pub unknown9: bool,
+    pub unknown10: bool,
+    pub reserved11_31: B21,
+}
+
+impl PageHeapObject for Unknown7Flags2 {
+    type Args<'a> = ();
+    fn heap_bytes_required(&self, _: ()) -> u16 {
+        std::mem::size_of::<u32>() as u16
+    }
+}
+
+impl Unknown7Flags2 {
+    /// Observed canonical value in every known real `exportExt.pdb`.
+    pub fn canonical() -> Self {
+        Self::new()
+            .with_unknown8(true)
+            .with_unknown9(true)
+            .with_unknown10(true)
+    }
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -140,5 +287,30 @@ mod test {
 
         flags.set_has_deleted_rows(true);
         assert_eq!(flags.into_bytes(), [0x34]);
+    }
+
+    #[test]
+    fn test_tag_flags() {
+        assert_eq!(TagFlags::new_tag().into_bytes(), [0x00, 0x00, 0x00, 0x00]);
+        assert_eq!(
+            TagFlags::new_category().into_bytes(),
+            [0x00, 0x00, 0x00, 0x01]
+        );
+    }
+
+    #[test]
+    fn test_unknown7_flag_words() {
+        assert_eq!(
+            Unknown7Flags0::canonical().into_bytes(),
+            [0x01, 0x20, 0x00, 0x24]
+        );
+        assert_eq!(
+            Unknown7Flags1::canonical().into_bytes(),
+            [0x96, 0x0f, 0x3c, 0x00]
+        );
+        assert_eq!(
+            Unknown7Flags2::canonical().into_bytes(),
+            [0x00, 0x07, 0x00, 0x00]
+        );
     }
 }

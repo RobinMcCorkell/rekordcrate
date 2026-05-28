@@ -269,34 +269,46 @@ impl<RW: Read + Write + Seek> Database<RW> {
     /// Creates a new PDB database with a blank set of tables.
     pub fn create(io: RW, db_type: DatabaseType) -> RekordcrateResult<Self> {
         const PAGE_SIZE: u32 = 4096;
-        const NUM_TABLES: u32 = 20;
-
-        let page_types: [PageType; 20] = [
-            PageType::Plain(PlainPageType::Tracks),
-            PageType::Plain(PlainPageType::Genres),
-            PageType::Plain(PlainPageType::Artists),
-            PageType::Plain(PlainPageType::Albums),
-            PageType::Plain(PlainPageType::Labels),
-            PageType::Plain(PlainPageType::Keys),
-            PageType::Plain(PlainPageType::Colors),
-            PageType::Plain(PlainPageType::PlaylistTree),
-            PageType::Plain(PlainPageType::PlaylistEntries),
-            PageType::Unknown(9),
-            PageType::Unknown(10),
-            PageType::Plain(PlainPageType::HistoryPlaylists),
-            PageType::Plain(PlainPageType::HistoryEntries),
-            PageType::Plain(PlainPageType::Artwork),
-            PageType::Unknown(14),
-            PageType::Unknown(15),
-            PageType::Plain(PlainPageType::Columns),
-            PageType::Plain(PlainPageType::Menu),
-            PageType::Unknown(18),
-            PageType::Plain(PlainPageType::History),
-        ];
+        let page_types: Vec<PageType> = match db_type {
+            DatabaseType::Plain => vec![
+                PageType::Plain(PlainPageType::Tracks),
+                PageType::Plain(PlainPageType::Genres),
+                PageType::Plain(PlainPageType::Artists),
+                PageType::Plain(PlainPageType::Albums),
+                PageType::Plain(PlainPageType::Labels),
+                PageType::Plain(PlainPageType::Keys),
+                PageType::Plain(PlainPageType::Colors),
+                PageType::Plain(PlainPageType::PlaylistTree),
+                PageType::Plain(PlainPageType::PlaylistEntries),
+                PageType::Unknown(9),
+                PageType::Unknown(10),
+                PageType::Plain(PlainPageType::HistoryPlaylists),
+                PageType::Plain(PlainPageType::HistoryEntries),
+                PageType::Plain(PlainPageType::Artwork),
+                PageType::Unknown(14),
+                PageType::Unknown(15),
+                PageType::Plain(PlainPageType::Columns),
+                PageType::Plain(PlainPageType::Menu),
+                PageType::Unknown(18),
+                PageType::Plain(PlainPageType::History),
+            ],
+            DatabaseType::Ext => vec![
+                PageType::Unknown(0),
+                PageType::Unknown(1),
+                PageType::Unknown(2),
+                PageType::Ext(ExtPageType::Tag),
+                PageType::Ext(ExtPageType::TrackTag),
+                PageType::Unknown(5),
+                PageType::Unknown(6),
+                PageType::Unknown(7),
+                PageType::Unknown(8),
+            ],
+        };
+        let num_tables = page_types.len() as u32;
 
         // Each table gets two pages: a free-space page (odd-numbered) followed by a data page
         // (even-numbered). `next_unused_page` points past the last page (1..=2*NUM_TABLES).
-        let next_unused_page = PageIndex(NUM_TABLES * 2 + 1);
+        let next_unused_page = PageIndex(num_tables * 2 + 1);
 
         let tables: Vec<Table> = page_types
             .iter()
@@ -315,14 +327,14 @@ impl<RW: Read + Write + Seek> Database<RW> {
 
         let header = Header {
             page_size: PAGE_SIZE,
-            num_tables: NUM_TABLES,
+            num_tables,
             next_unused_page,
             unknown: 5,
             next_page_sequence: 1,
             tables,
         };
 
-        let mut pages: Vec<LazyPage> = Vec::with_capacity(NUM_TABLES as usize * 2);
+        let mut pages: Vec<LazyPage> = Vec::with_capacity(num_tables as usize * 2);
 
         for (i, &page_type) in page_types.iter().enumerate() {
             let index_page_idx = PageIndex(i as u32 * 2 + 1);

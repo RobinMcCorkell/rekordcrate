@@ -19,9 +19,10 @@
 //! - <https://github.com/henrybetts/Rekordbox-Decoding>
 //! - <https://github.com/flesniak/python-prodj-link/tree/master/prodj/pdblib>
 
+use crate::pdb::bitfields::TagFlags;
 use crate::pdb::{
-    offset_array::OffsetArrayItems, DeviceSQLString, OffsetArrayContainer, PageHeapObject, Subtype,
-    TrackId,
+    offset_array::OffsetArrayItems, DeviceSQLString, OffsetArrayContainer, PageHeapObject,
+    PageType, Row, RowVariant, Subtype, TrackId,
 };
 use binrw::binrw;
 use std::num::NonZero;
@@ -107,8 +108,8 @@ pub struct TagOrCategory {
     pub position: u32,
     /// Numeric ID of the tag or category.
     pub id: TagId,
-    /// Non-zero if this row represents a category rather than a tag.
-    pub raw_is_category: u32,
+    /// Bitfield where bit 24 marks category rows.
+    pub raw_is_category: TagFlags,
     /// The strings associated with this tag or category.
     #[brw(args(0x1C, subtype.get_offset_size(), ()))]
     pub offsets: OffsetArrayContainer<TagOrCategoryStrings, 2>,
@@ -131,6 +132,24 @@ impl PageHeapObject for TagOrCategory {
         ]
         .iter()
         .sum()
+    }
+}
+
+impl RowVariant for TagOrCategory {
+    const PAGE_TYPE: PageType = PageType::Ext(ExtPageType::Tag);
+
+    fn from_row(row: &Row) -> Option<&Self> {
+        match row {
+            Row::Ext(ExtRow::Tag(row)) => Some(row),
+            _ => None,
+        }
+    }
+
+    fn from_row_mut(row: &mut Row) -> Option<&mut Self> {
+        match row {
+            Row::Ext(ExtRow::Tag(row)) => Some(row),
+            _ => None,
+        }
     }
 }
 
@@ -160,6 +179,24 @@ impl PageHeapObject for TrackTag {
         ]
         .iter()
         .sum()
+    }
+}
+
+impl RowVariant for TrackTag {
+    const PAGE_TYPE: PageType = PageType::Ext(ExtPageType::TrackTag);
+
+    fn from_row(row: &Row) -> Option<&Self> {
+        match row {
+            Row::Ext(ExtRow::TrackTag(row)) => Some(row),
+            _ => None,
+        }
+    }
+
+    fn from_row_mut(row: &mut Row) -> Option<&mut Self> {
+        match row {
+            Row::Ext(ExtRow::TrackTag(row)) => Some(row),
+            _ => None,
+        }
     }
 }
 

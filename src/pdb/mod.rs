@@ -26,7 +26,7 @@ pub mod offset_array;
 pub mod string;
 pub mod validation;
 
-use bitfields::{PackedRowCounts, PageFlags};
+use bitfields::{PackedRowCounts, PageFlags, Unknown7Flags0, Unknown7Flags1, Unknown7Flags2};
 use offset_array::{OffsetArrayContainer, OffsetArrayItems};
 
 #[cfg(test)]
@@ -84,10 +84,10 @@ pub enum PageType {
     Ext(ExtPageType),
     /// Placeholder table slot with an unrecognized page type.
     ///
-    /// PDB files always contain exactly 20 table entries in a fixed layout. Several of those slots
-    /// (indices 9, 10, 14, 15, 18) hold page-type values that are not fully understood. Table 18
-    /// is populated in every known plain export and therefore has a concrete row model here; the
-    /// remaining unknown tables still round-trip as opaque data. Unlike
+    /// Plain PDB files contain several fixed-position table slots with unrecognized page types.
+    /// Table 18 is populated in every known plain export and exportExt fixtures also populate table
+    /// 7, so those two have concrete row models here; the remaining unknown tables still round-trip
+    /// as opaque data. Unlike
     /// [`Content::Unknown`](crate::anlz::Unknown) in ANLZ files, these page types are intentionally
     /// serialized as part of any new database we create.
     Unknown(u32),
@@ -1950,10 +1950,21 @@ impl TrackStrings {
         self.date_added = date_added;
     }
 
+    /// Set the track's analysis date (`YYYY-MM-DD`).
+    pub fn set_analyze_date(&mut self, analyze_date: DeviceSQLString) {
+        self.analyze_date = analyze_date;
+    }
+
     /// Return the track's added-to-library date string.
     #[must_use]
     pub fn date_added(&self) -> &DeviceSQLString {
         &self.date_added
+    }
+
+    /// Return the track's analysis date string.
+    #[must_use]
+    pub fn analyze_date(&self) -> &DeviceSQLString {
+        &self.analyze_date
     }
 
     /// Return the exported autoload-hotcues setting.
@@ -2307,6 +2318,126 @@ impl RowVariant for Unknown18Row {
     }
 }
 
+/// Fixed 60-byte row found in table 7 of every known `exportExt.pdb`.
+#[binrw]
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+#[brw(little)]
+pub struct Unknown7Row {
+    /// Always zero in known exports.
+    pub reserved0: u32,
+    /// Points at the table's current data page.
+    pub data_page: u32,
+    /// Matches the containing table ID in known exports.
+    pub table_id: u32,
+    /// Points at the table's current empty-candidate page.
+    pub empty_candidate_page: u32,
+    /// Opaque state value.
+    pub state: u32,
+    /// Reserved / unknown.
+    pub reserved1: u32,
+    /// Opaque flags word.
+    pub flags0: Unknown7Flags0,
+    /// Opaque flags word.
+    pub flags1: Unknown7Flags1,
+    /// Opaque version / count field.
+    pub version: u32,
+    /// Reserved / unknown.
+    pub reserved2: u32,
+    /// Opaque bitmask value.
+    pub flags2: Unknown7Flags2,
+    /// Reserved / unknown.
+    pub reserved3: u32,
+    /// Reserved / unknown.
+    pub reserved4: u32,
+    /// Reserved / unknown.
+    pub reserved5: u32,
+    /// Reserved / unknown.
+    pub reserved6: u32,
+}
+
+impl Unknown7Row {
+    /// Create a new table-7 row for `exportExt.pdb`.
+    #[allow(clippy::too_many_arguments)]
+    pub const fn new(
+        reserved0: u32,
+        data_page: u32,
+        table_id: u32,
+        empty_candidate_page: u32,
+        state: u32,
+        reserved1: u32,
+        flags0: Unknown7Flags0,
+        flags1: Unknown7Flags1,
+        version: u32,
+        reserved2: u32,
+        flags2: Unknown7Flags2,
+        reserved3: u32,
+        reserved4: u32,
+        reserved5: u32,
+        reserved6: u32,
+    ) -> Self {
+        Self {
+            reserved0,
+            data_page,
+            table_id,
+            empty_candidate_page,
+            state,
+            reserved1,
+            flags0,
+            flags1,
+            version,
+            reserved2,
+            flags2,
+            reserved3,
+            reserved4,
+            reserved5,
+            reserved6,
+        }
+    }
+}
+
+impl PageHeapObject for Unknown7Row {
+    type Args<'a> = ();
+    fn heap_bytes_required(&self, _: ()) -> u16 {
+        [
+            self.reserved0.heap_bytes_required(()),
+            self.data_page.heap_bytes_required(()),
+            self.table_id.heap_bytes_required(()),
+            self.empty_candidate_page.heap_bytes_required(()),
+            self.state.heap_bytes_required(()),
+            self.reserved1.heap_bytes_required(()),
+            self.flags0.heap_bytes_required(()),
+            self.flags1.heap_bytes_required(()),
+            self.version.heap_bytes_required(()),
+            self.reserved2.heap_bytes_required(()),
+            self.flags2.heap_bytes_required(()),
+            self.reserved3.heap_bytes_required(()),
+            self.reserved4.heap_bytes_required(()),
+            self.reserved5.heap_bytes_required(()),
+            self.reserved6.heap_bytes_required(()),
+        ]
+        .iter()
+        .sum()
+    }
+}
+
+impl RowVariant for Unknown7Row {
+    const PAGE_TYPE: PageType = PageType::Unknown(7);
+
+    fn from_row(row: &Row) -> Option<&Self> {
+        match row {
+            Row::Unknown7(row) => Some(row),
+            _ => None,
+        }
+    }
+
+    fn from_row_mut(row: &mut Row) -> Option<&mut Self> {
+        match row {
+            Row::Unknown7(row) => Some(row),
+            _ => None,
+        }
+    }
+}
+
 /// A table row contains the actual data.
 #[binrw]
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -2453,11 +2584,16 @@ pub enum Row {
         }))]
         ExtRow,
     ),
+    /// Typed row for the fixed payload found in `exportExt.pdb` table 7.
+    #[br(pre_assert(page_type == PageType::Unknown(7)))]
+    Unknown7(Unknown7Row),
     /// Typed rows for the fixed payload found in plain-export table 18.
     #[br(pre_assert(page_type == PageType::Unknown(18)))]
     Unknown18(Unknown18Row),
     /// The row format (and also its size) is unknown, which means it can't be parsed.
-    #[br(pre_assert(matches!(page_type, PageType::Unknown(_)) && page_type != PageType::Unknown(18)))]
+    #[br(pre_assert(matches!(page_type, PageType::Unknown(_))
+        && page_type != PageType::Unknown(7)
+        && page_type != PageType::Unknown(18)))]
     Unknown,
 }
 
@@ -2478,6 +2614,7 @@ impl Row {
         match self {
             Row::Plain(plain_row) => PageType::Plain(plain_row.page_type()),
             Row::Ext(ext_row) => PageType::Ext(ext_row.page_type()),
+            Row::Unknown7(_) => PageType::Unknown(7),
             Row::Unknown18(_) => PageType::Unknown(18),
             Row::Unknown => panic!("Unable to determine page type for unknown row"),
         }
@@ -2490,6 +2627,7 @@ impl PageHeapObject for Row {
         match self {
             Row::Plain(plain_row) => plain_row.heap_bytes_required(()),
             Row::Ext(ext_row) => ext_row.heap_bytes_required(()),
+            Row::Unknown7(row) => row.heap_bytes_required(()),
             Row::Unknown18(row) => row.heap_bytes_required(()),
             Row::Unknown => panic!("Unable to determine required bytes for unknown row type"),
         }

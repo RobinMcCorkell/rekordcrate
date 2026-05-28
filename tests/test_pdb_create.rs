@@ -11,6 +11,7 @@
 
 use fallible_iterator::FallibleIterator;
 use rekordcrate::pdb::defaults::{insert_initial_content, insert_standard_keys};
+use rekordcrate::pdb::ext::ExtPageType;
 use rekordcrate::pdb::io::Database;
 use rekordcrate::pdb::validation::validate;
 use rekordcrate::pdb::*;
@@ -19,6 +20,7 @@ use std::io::Cursor;
 
 const PAGE_SIZE: u32 = 4096;
 const NUM_TABLES: usize = 20;
+const EXT_NUM_TABLES: usize = 9;
 /// Free space in an empty data page: PAGE_SIZE minus the page header (0x20 = 32 bytes) and the
 /// data page header (0x8 = 8 bytes).
 const DATA_PAGE_FREE_SIZE: u16 = (PAGE_SIZE - PageHeader::BINARY_SIZE - 8) as u16;
@@ -26,6 +28,11 @@ const DATA_PAGE_FREE_SIZE: u16 = (PAGE_SIZE - PageHeader::BINARY_SIZE - 8) as u1
 fn create_empty_db() -> Database<Cursor<Vec<u8>>> {
     let cursor = Cursor::new(Vec::new());
     Database::create(cursor, DatabaseType::Plain).expect("failed to create database")
+}
+
+fn create_empty_ext_db() -> Database<Cursor<Vec<u8>>> {
+    let cursor = Cursor::new(Vec::new());
+    Database::create(cursor, DatabaseType::Ext).expect("failed to create ext database")
 }
 
 fn get_row_count<RowT: RowVariant>(db: &mut Database<impl std::io::Read + std::io::Seek>) -> usize {
@@ -60,6 +67,55 @@ fn test_insert_initial_content_updates_sequence_like_empty_export() {
         .expect("insert_initial_content failed");
 
     assert_eq!(db.get_header().next_page_sequence, 6);
+}
+
+#[test]
+fn test_create_ext_header_fields() {
+    let db = create_empty_ext_db();
+    let header = db.get_header();
+
+    assert_eq!(header.page_size, PAGE_SIZE);
+    assert_eq!(header.num_tables, EXT_NUM_TABLES as u32);
+    assert_eq!(
+        header.next_unused_page,
+        PageIndex::try_from(EXT_NUM_TABLES as u32 * 2 + 1).unwrap()
+    );
+    assert_eq!(header.unknown, 5);
+    assert_eq!(header.next_page_sequence, 1);
+}
+
+#[test]
+fn test_create_ext_two_pages_per_table() {
+    let db = create_empty_ext_db();
+    let header = db.get_header();
+    let expected_page_types = [
+        PageType::Unknown(0),
+        PageType::Unknown(1),
+        PageType::Unknown(2),
+        PageType::Ext(ExtPageType::Tag),
+        PageType::Ext(ExtPageType::TrackTag),
+        PageType::Unknown(5),
+        PageType::Unknown(6),
+        PageType::Unknown(7),
+        PageType::Unknown(8),
+    ];
+
+    assert_eq!(header.tables.len(), EXT_NUM_TABLES);
+
+    for (i, (table, expected_page_type)) in
+        header.tables.iter().zip(expected_page_types).enumerate()
+    {
+        let expected_index_page = PageIndex::try_from(i as u32 * 2 + 1).unwrap();
+        let expected_data_page = PageIndex::try_from(i as u32 * 2 + 2).unwrap();
+
+        assert_eq!(table.page_type, expected_page_type);
+        assert_eq!(table.first_page, expected_index_page);
+        assert_eq!(table.last_page, expected_index_page);
+        assert_eq!(
+            PageIndex::try_from(table.empty_candidate).unwrap(),
+            expected_data_page
+        );
+    }
 }
 
 /// Verifies that each table has an free-space page as both first_page and last_page (empty table),

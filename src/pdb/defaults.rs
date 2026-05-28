@@ -9,13 +9,17 @@
 //! Default seed rows for Pioneer DeviceSQL databases.
 
 use std::io::{Read, Seek, Write};
+use std::num::NonZero;
 
+use super::bitfields::{TagFlags, Unknown7Flags0, Unknown7Flags1, Unknown7Flags2};
+use super::ext::{ParentId, TagId, TagOrCategory, TagOrCategoryStrings};
 use super::io::Database;
 use super::string::DeviceSQLString;
 use super::{
-    Color, ColumnEntry, History, Key, KeyId, Menu, MenuVisibility, PlainRow, Row, Unknown18Row,
+    Color, ColumnEntry, History, Key, KeyId, Menu, MenuVisibility, OffsetArrayContainer, PlainRow,
+    Row, Subtype, Unknown18Row, Unknown7Row,
 };
-use crate::util::ColorIndex;
+use crate::util::{ColorIndex, MaybeCalculated};
 use crate::Result;
 
 /// Rekordbox's history row version string for exported PDB files.
@@ -37,6 +41,14 @@ pub fn insert_initial_content<IO: Read + Write + Seek>(
     insert_default_columns(db)?;
     insert_default_menu_rows(db)?;
     insert_default_unknown18_rows(db)?;
+    Ok(())
+}
+
+/// Insert the rows present in a freshly exported blank `exportExt.pdb`.
+pub fn insert_initial_ext_content<IO: Read + Write + Seek>(db: &mut Database<IO>) -> Result<()> {
+    insert_default_unknown7_rows(db)?;
+    insert_default_ext_tags(db)?;
+    db.get_header_mut().next_page_sequence = 6;
     Ok(())
 }
 
@@ -110,6 +122,40 @@ pub fn insert_default_unknown18_rows<IO: Read + Write + Seek>(db: &mut Database<
         db.insert_row(Row::Unknown18(*row))?;
     }
 
+    Ok(())
+}
+
+/// Insert the fixed tag taxonomy present in blank `exportExt.pdb` files.
+pub fn insert_default_ext_tags<IO: Read + Write + Seek>(db: &mut Database<IO>) -> Result<()> {
+    for &(id, parent_id, position, is_category, name) in DEFAULT_EXT_TAG_ROWS {
+        db.insert_row(Row::Ext(super::ext::ExtRow::Tag(TagOrCategory {
+            subtype: Subtype(0x0680),
+            index_shift: 0,
+            unknown1: 0,
+            unknown2: 0,
+            parent_id: ParentId(NonZero::new(parent_id)),
+            position,
+            id: TagId(id),
+            raw_is_category: if is_category {
+                TagFlags::new_category()
+            } else {
+                TagFlags::new_tag()
+            },
+            offsets: OffsetArrayContainer {
+                offsets: MaybeCalculated::Calculated,
+                inner: TagOrCategoryStrings {
+                    name: name.parse()?,
+                    unknown: "".parse()?,
+                },
+            },
+        })))?;
+    }
+    Ok(())
+}
+
+/// Insert the invariant table-7 row present in blank `exportExt.pdb` files.
+pub fn insert_default_unknown7_rows<IO: Read + Write + Seek>(db: &mut Database<IO>) -> Result<()> {
+    db.insert_row(Row::Unknown7(default_unknown7_row()))?;
     Ok(())
 }
 
@@ -226,6 +272,57 @@ const DEFAULT_UNKNOWN18_ROWS: &[Unknown18Row] = &[
     Unknown18Row::new(11, 12, 0x0700, 0),
 ];
 
+const DEFAULT_EXT_TAG_ROWS: &[(u32, u32, u32, bool, &str)] = &[
+    (1, 0, 0, true, "Genre"),
+    (2179428034, 1, 0, false, "Acid House"),
+    (362712954, 1, 1, false, "Deep House"),
+    (4258818180, 1, 2, false, "Techno"),
+    (3211305494, 1, 3, false, "Nu Disco"),
+    (1837410776, 1, 4, false, "Electro House"),
+    (2309293472, 1, 5, false, "Bass Music"),
+    (2247489588, 1, 6, false, "Trap"),
+    (2, 0, 1, true, "Components"),
+    (4044416570, 2, 0, false, "Synth"),
+    (168531128, 2, 1, false, "Vocal"),
+    (656614702, 2, 2, false, "Beat"),
+    (973268804, 2, 3, false, "Sub Bass"),
+    (725093373, 2, 4, false, "Percussion"),
+    (2739544171, 2, 5, false, "Piano"),
+    (2572886564, 2, 6, false, "Dark"),
+    (3537040097, 2, 7, false, "Upper"),
+    (3, 0, 2, true, "Situation"),
+    (3464440893, 3, 0, false, "Main Floor"),
+    (3767726207, 3, 1, false, "Second Floor"),
+    (1932755035, 3, 2, false, "Lounge"),
+    (2178301443, 3, 3, false, "Mid Night"),
+    (612436637, 3, 4, false, "Morning"),
+    (3188249233, 3, 5, false, "Build up"),
+    (1743695786, 3, 6, false, "Peak Time"),
+    (946077, 3, 7, false, "Build down"),
+    (4, 0, 3, true, "Untitled Column"),
+    (701802348, 4, 0, false, "My Comment"),
+];
+
+fn default_unknown7_row() -> Unknown7Row {
+    Unknown7Row::new(
+        0,
+        16,
+        7,
+        19,
+        1,
+        0,
+        Unknown7Flags0::canonical(),
+        Unknown7Flags1::canonical(),
+        1,
+        0,
+        Unknown7Flags2::canonical(),
+        0,
+        0,
+        0,
+        0,
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
@@ -301,6 +398,71 @@ mod tests {
         let history_page = db.load_page(PageIndex(40))?;
         assert_eq!(history_page.header.used_size, 32);
         assert_eq!(history_page.header.free_size, 4018);
+
+        Ok(())
+    }
+
+    #[test]
+    fn blank_ext_export_defaults_match_expected_layout() -> Result<()> {
+        let cursor = Cursor::new(Vec::new());
+        let mut db = Database::create(cursor, DatabaseType::Ext)?;
+
+        insert_initial_ext_content(&mut db)?;
+
+        assert_eq!(db.iter_rows::<TagOrCategory>()?.count()?, 28);
+        assert_eq!(db.iter_rows::<Unknown7Row>()?.count()?, 1);
+
+        let tag_table = db
+            .get_header()
+            .find_table(PageType::Ext(super::super::ext::ExtPageType::Tag))
+            .expect("ext DBs always contain the tag table")
+            .1
+            .clone();
+        assert_eq!(tag_table.first_page, PageIndex(7));
+        assert_eq!(tag_table.last_page, PageIndex(8));
+        assert_eq!(tag_table.empty_candidate, 20);
+
+        let unknown7_table = db
+            .get_header()
+            .find_table(PageType::Unknown(7))
+            .expect("ext DBs always contain table 7")
+            .1
+            .clone();
+        assert_eq!(unknown7_table.first_page, PageIndex(15));
+        assert_eq!(unknown7_table.last_page, PageIndex(16));
+        assert_eq!(unknown7_table.empty_candidate, 19);
+
+        assert_eq!(db.get_header().next_unused_page, PageIndex(21));
+        assert_eq!(db.get_header().next_page_sequence, 6);
+
+        let tags: Vec<_> = db
+            .iter_rows::<TagOrCategory>()?
+            .map(|row| {
+                Ok((
+                    row.id.0,
+                    row.parent_id.0.map_or(0, |id| id.get()),
+                    row.position,
+                    row.raw_is_category.is_category(),
+                    row.offsets.inner.name.clone().into_string().unwrap(),
+                ))
+            })
+            .collect()?;
+        assert_eq!(
+            tags,
+            DEFAULT_EXT_TAG_ROWS
+                .iter()
+                .map(|&(id, parent_id, position, is_category, name)| {
+                    (id, parent_id, position, is_category, name.to_owned())
+                })
+                .collect::<Vec<_>>()
+        );
+
+        let unknown7 = db
+            .iter_rows::<Unknown7Row>()?
+            .next()?
+            .expect("expected the canonical table-7 row")
+            .to_owned();
+        assert_eq!(unknown7, default_unknown7_row());
 
         Ok(())
     }

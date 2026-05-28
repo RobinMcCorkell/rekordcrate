@@ -5,6 +5,7 @@
 // http://mozilla.org/MPL/2.0/.
 //
 // SPDX-License-Identifier: MPL-2.0
+use super::bitfields::TagFlags;
 use super::ext::*;
 use super::*;
 use crate::util::testing::{test_roundtrip, test_roundtrip_with_args};
@@ -10178,7 +10179,7 @@ fn tag_page() {
                 parent_id: ParentId(None),
                 position: 0,
                 id: TagId(1),
-                raw_is_category: 16777216,
+                raw_is_category: TagFlags::new_category(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 44].into()),
                     inner: TagOrCategoryStrings {
@@ -10198,7 +10199,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(1).unwrap())),
                 position: 0,
                 id: TagId(3456350885),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10218,7 +10219,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(1).unwrap())),
                 position: 1,
                 id: TagId(246010797),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10238,7 +10239,7 @@ fn tag_page() {
                 parent_id: ParentId(None),
                 position: 1,
                 id: TagId(2),
-                raw_is_category: 16777216,
+                raw_is_category: TagFlags::new_category(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 44].into()),
                     inner: TagOrCategoryStrings {
@@ -10258,7 +10259,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(2).unwrap())),
                 position: 0,
                 id: TagId(2923592519),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10278,7 +10279,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(2).unwrap())),
                 position: 1,
                 id: TagId(3518593467),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 48].into()),
                     inner: TagOrCategoryStrings {
@@ -10298,7 +10299,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(2).unwrap())),
                 position: 2,
                 id: TagId(870902105),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10318,7 +10319,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(2).unwrap())),
                 position: 3,
                 id: TagId(3211624224),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10338,7 +10339,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(2).unwrap())),
                 position: 4,
                 id: TagId(3216792858),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10358,7 +10359,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(2).unwrap())),
                 position: 5,
                 id: TagId(712200756),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10378,7 +10379,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(2).unwrap())),
                 position: 6,
                 id: TagId(4166869272),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10398,7 +10399,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(2).unwrap())),
                 position: 7,
                 id: TagId(4052665282),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10418,7 +10419,7 @@ fn tag_page() {
                 parent_id: ParentId(None),
                 position: 2,
                 id: TagId(3),
-                raw_is_category: 16777216,
+                raw_is_category: TagFlags::new_category(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 44].into()),
                     inner: TagOrCategoryStrings {
@@ -10438,7 +10439,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(3).unwrap())),
                 position: 0,
                 id: TagId(2498240426),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10458,7 +10459,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(3).unwrap())),
                 position: 1,
                 id: TagId(598441108),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10478,7 +10479,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(3).unwrap())),
                 position: 2,
                 id: TagId(4263562201),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10498,7 +10499,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(3).unwrap())),
                 position: 3,
                 id: TagId(926017397),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10518,7 +10519,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(3).unwrap())),
                 position: 4,
                 id: TagId(707481115),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10538,7 +10539,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(3).unwrap())),
                 position: 5,
                 id: TagId(3043071597),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10558,7 +10559,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(3).unwrap())),
                 position: 6,
                 id: TagId(4026144338),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10578,7 +10579,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(3).unwrap())),
                 position: 7,
                 id: TagId(218937570),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 40].into()),
                     inner: TagOrCategoryStrings {
@@ -10598,7 +10599,7 @@ fn tag_page() {
                 parent_id: ParentId(None),
                 position: 3,
                 id: TagId(4),
-                raw_is_category: 16777216,
+                raw_is_category: TagFlags::new_category(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 44].into()),
                     inner: TagOrCategoryStrings {
@@ -10618,7 +10619,7 @@ fn tag_page() {
                 parent_id: ParentId(Some(NonZero::new(4).unwrap())),
                 position: 0,
                 id: TagId(3074636465),
-                raw_is_category: 0,
+                raw_is_category: TagFlags::new_tag(),
                 offsets: OffsetArrayContainer {
                     offsets: Provided([31u8, 54].into()),
                     inner: TagOrCategoryStrings {
