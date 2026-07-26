@@ -19,6 +19,8 @@ use serde::Serialize;
 use std::collections::BTreeMap;
 use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::process::ExitCode;
+use thiserror::Error;
 
 #[derive(Parser)]
 #[command(author, version, about)]
@@ -39,6 +41,23 @@ enum DumpFormat {
     #[value(name = "json")]
     Json,
 }
+
+#[derive(Debug, Error)]
+enum CliError {
+    #[error(transparent)]
+    Rekordcrate(#[from] rekordcrate::Error),
+
+    #[error("{0} is not a file!")]
+    NotAFile(PathBuf),
+
+    #[error("no DB_TYPE supplied nor could it be guessed for {0}!")]
+    CouldNotInferDatabaseType(PathBuf),
+
+    #[error("no SETTING_TYPE supplied nor could it be guessed for {0}!")]
+    CouldNotInferSettingType(PathBuf),
+}
+
+type CliResult<T> = Result<T, CliError>;
 
 #[derive(Subcommand)]
 enum Commands {
@@ -425,7 +444,7 @@ fn dump_xml(path: &Path) -> rekordcrate::Result<()> {
     Ok(())
 }
 
-fn guess_db_type(path: &Path, db_type: Option<&str>) -> Option<DatabaseType> {
+fn guess_db_type(path: &Path, db_type: Option<&str>) -> CliResult<DatabaseType> {
     let db_type_cli = db_type.map(|str| match str {
         "plain" => DatabaseType::Plain,
         "ext" => DatabaseType::Ext,
@@ -433,8 +452,7 @@ fn guess_db_type(path: &Path, db_type: Option<&str>) -> Option<DatabaseType> {
     });
     let file_name = match path.file_name() {
         None => {
-            eprintln!("{} not a file!", path.display());
-            return None; // TODO(Swiftb0y): turn this into a proper error
+            return Err(CliError::NotAFile(path.to_path_buf()));
         }
         Some(file_name) => file_name,
     };
@@ -447,8 +465,7 @@ fn guess_db_type(path: &Path, db_type: Option<&str>) -> Option<DatabaseType> {
     };
     let db_type = match (db_type_cli, db_type_file) {
         (None, None) => {
-            eprintln!("no DB_TYPE supplied nor could it be guessed!");
-            return None; // TODO(Swiftb0y): turn this into a proper error
+            return Err(CliError::CouldNotInferDatabaseType(path.to_path_buf()));
         }
         (None, Some(guess)) | (Some(guess), None) => guess,
         (Some(db_type_cli), Some(db_type_file)) if db_type_cli == db_type_file => db_type_cli,
@@ -457,10 +474,10 @@ fn guess_db_type(path: &Path, db_type: Option<&str>) -> Option<DatabaseType> {
             db_type_cli
         }
     };
-    Some(db_type)
+    Ok(db_type)
 }
 
-fn guess_setting_type(path: &Path, setting_type: Option<&str>) -> Option<SettingType> {
+fn guess_setting_type(path: &Path, setting_type: Option<&str>) -> CliResult<SettingType> {
     let setting_type_cli = setting_type.map(|str| match str {
         "devsetting" => SettingType::DevSetting,
         "djmmysetting" => SettingType::DJMMySetting,
@@ -472,16 +489,14 @@ fn guess_setting_type(path: &Path, setting_type: Option<&str>) -> Option<Setting
     });
     let file_name = match path.file_name() {
         None => {
-            eprintln!("{} not a file!", path.display());
-            return None; // TODO: turn into proper error
+            return Err(CliError::NotAFile(path.to_path_buf()));
         }
         Some(file_name) => file_name,
     };
     let setting_type_file = SettingType::from_filename(file_name);
     let setting_type = match (setting_type_cli, setting_type_file) {
         (None, None) => {
-            eprintln!("no SETTING_TYPE supplied nor could it be guessed!");
-            return None; // TODO: turn into proper error
+            return Err(CliError::CouldNotInferSettingType(path.to_path_buf()));
         }
         (None, Some(guess)) | (Some(guess), None) => guess,
         (Some(setting_type_cli), Some(setting_type_file))
@@ -494,41 +509,47 @@ fn guess_setting_type(path: &Path, setting_type: Option<&str>) -> Option<Setting
             setting_type_cli
         }
     };
-    Some(setting_type)
+    Ok(setting_type)
 }
 
-fn main() -> rekordcrate::Result<()> {
+fn run() -> CliResult<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::ListPlaylists { path } => list_playlists(path),
-        Commands::ListSettings { path } => list_settings(path),
-        Commands::ExportPlaylists { path, output_dir } => export_playlists(path, output_dir),
+        Commands::ListPlaylists { path } => list_playlists(path).map_err(Into::into),
+        Commands::ListSettings { path } => list_settings(path).map_err(Into::into),
+        Commands::ExportPlaylists { path, output_dir } => {
+            export_playlists(path, output_dir).map_err(Into::into)
+        }
         Commands::DumpPDB {
             path,
             db_type,
             parse_unknown_tables,
             format,
         } => {
-            let db_type = match guess_db_type(path, db_type.as_deref()) {
-                Some(db_type) => db_type,
-                None => return Ok(()), // TODO(Swiftb0y): turn into proper error;
-            };
-            dump_pdb(path, db_type, *parse_unknown_tables, *format)
+            let db_type = guess_db_type(path, db_type.as_deref())?;
+            dump_pdb(path, db_type, *parse_unknown_tables, *format).map_err(Into::into)
         }
-        Commands::DumpANLZ { path, format } => dump_anlz(path, *format),
+        Commands::DumpANLZ { path, format } => dump_anlz(path, *format).map_err(Into::into),
         Commands::DumpSetting {
             path,
             setting_type,
             format,
         } => {
-            let setting_type = match guess_setting_type(path, setting_type.as_deref()) {
-                Some(setting_type) => setting_type,
-                None => return Ok(()), // TODO: turn into proper error
-            };
-            dump_setting(path, setting_type, *format)
+            let setting_type = guess_setting_type(path, setting_type.as_deref())?;
+            dump_setting(path, setting_type, *format).map_err(Into::into)
         }
         #[cfg(feature = "xml")]
-        Commands::DumpXML { path } => dump_xml(path),
+        Commands::DumpXML { path } => dump_xml(path).map_err(Into::into),
+    }
+}
+
+fn main() -> ExitCode {
+    match run() {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(err) => {
+            eprintln!("{err}");
+            ExitCode::FAILURE
+        }
     }
 }
