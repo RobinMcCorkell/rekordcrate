@@ -41,9 +41,11 @@ impl Default for WaveformRenderer {
 #[derive(Debug)]
 struct Plot {
     label: &'static str,
-    heights: Vec<u8>,
-    maximum: u8,
+    heights: Vec<u16>,
+    maximum: u16,
     colors: Option<Vec<String>>,
+    bands: Option<(Vec<u16>, Vec<u16>, Vec<u16>)>,
+    bottom_aligned: bool,
 }
 
 impl WaveformRenderer {
@@ -67,15 +69,33 @@ impl WaveformRenderer {
             .filter_map(|section| match &section.content {
                 Content::WaveformPreview(preview) => Some(Plot {
                     label: "PWAV",
-                    heights: preview.data.iter().map(|column| column.height()).collect(),
+                    heights: preview
+                        .data
+                        .iter()
+                        .map(|column| u16::from(column.height()))
+                        .collect(),
                     maximum: 31,
-                    colors: None,
+                    colors: Some(
+                        preview
+                            .data
+                            .iter()
+                            .map(|column| blue_color(column.whiteness()))
+                            .collect(),
+                    ),
+                    bands: None,
+                    bottom_aligned: true,
                 }),
                 Content::TinyWaveformPreview(preview) => Some(Plot {
                     label: "PWV2",
-                    heights: preview.data.iter().map(|column| column.height()).collect(),
+                    heights: preview
+                        .data
+                        .iter()
+                        .map(|column| u16::from(column.height()))
+                        .collect(),
                     maximum: 15,
                     colors: None,
+                    bands: None,
+                    bottom_aligned: true,
                 }),
                 Content::WaveformColorPreview(preview) => Some(Plot {
                     label: "PWV4",
@@ -83,13 +103,21 @@ impl WaveformRenderer {
                         .data
                         .iter()
                         .map(|column| {
-                            column
-                                .energy_bottom_third_freq
-                                .max(column.energy_mid_third_freq)
-                                .max(column.energy_top_third_freq)
+                            u16::from(column.energy_bottom_third_freq)
+                                + u16::from(column.energy_mid_third_freq)
+                                + u16::from(column.energy_top_third_freq)
                         })
                         .collect(),
-                    maximum: u8::MAX,
+                    maximum: preview
+                        .data
+                        .iter()
+                        .map(|column| {
+                            u16::from(column.energy_bottom_third_freq)
+                                + u16::from(column.energy_mid_third_freq)
+                                + u16::from(column.energy_top_third_freq)
+                        })
+                        .max()
+                        .unwrap_or(1),
                     colors: Some(
                         preview
                             .data
@@ -103,6 +131,8 @@ impl WaveformRenderer {
                             })
                             .collect(),
                     ),
+                    bands: None,
+                    bottom_aligned: true,
                 }),
                 Content::Waveform3BandPreview(preview) => Some(Plot {
                     label: "PWV6",
@@ -110,26 +140,40 @@ impl WaveformRenderer {
                         .data
                         .iter()
                         .map(|column| {
-                            column
-                                .energy_bottom_third_freq
-                                .max(column.energy_mid_third_freq)
-                                .max(column.energy_top_third_freq)
+                            u16::from(column.energy_bottom_third_freq)
+                                + u16::from(column.energy_mid_third_freq)
+                                + u16::from(column.energy_top_third_freq)
                         })
                         .collect(),
-                    maximum: u8::MAX,
-                    colors: Some(
+                    maximum: preview
+                        .data
+                        .iter()
+                        .map(|column| {
+                            u16::from(column.energy_bottom_third_freq)
+                                + u16::from(column.energy_mid_third_freq)
+                                + u16::from(column.energy_top_third_freq)
+                        })
+                        .max()
+                        .unwrap_or(1),
+                    colors: None,
+                    bands: Some((
                         preview
                             .data
                             .iter()
-                            .map(|column| {
-                                rgb_color(
-                                    column.energy_bottom_third_freq,
-                                    column.energy_mid_third_freq,
-                                    column.energy_top_third_freq,
-                                )
-                            })
+                            .map(|column| u16::from(column.energy_bottom_third_freq))
                             .collect(),
-                    ),
+                        preview
+                            .data
+                            .iter()
+                            .map(|column| u16::from(column.energy_mid_third_freq))
+                            .collect(),
+                        preview
+                            .data
+                            .iter()
+                            .map(|column| u16::from(column.energy_top_third_freq))
+                            .collect(),
+                    )),
+                    bottom_aligned: true,
                 }),
                 _ => None,
             })
@@ -150,9 +194,14 @@ impl WaveformRenderer {
         }
         self.render_plots(&[Plot {
             label: "PWAV",
-            heights: columns.iter().map(|column| column.height()).collect(),
+            heights: columns
+                .iter()
+                .map(|column| u16::from(column.height()))
+                .collect(),
             maximum: 31,
             colors: None,
+            bands: None,
+            bottom_aligned: false,
         }])
     }
 
@@ -212,9 +261,41 @@ impl WaveformRenderer {
         width: u32,
         height: u32,
     ) -> Box<dyn svg::node::Node> {
+        if let Some((low, mid, high)) = &plot.bands {
+            let divisor = plot.heights.len().max(1) as f32;
+            let mut group = svg::node::element::Group::new();
+            for column in 0..plot.heights.len() {
+                let x = left as f32 + width as f32 * column as f32 / divisor;
+                let mut lower = 0.0_f32;
+                for (index, (value, color)) in
+                    [(low, "#2563eb"), (mid, "#fde047"), (high, "#f8fafc")]
+                        .into_iter()
+                        .enumerate()
+                {
+                    let band_height =
+                        f32::from(value[column]) / f32::from(plot.maximum.max(1)) * height as f32;
+                    group = group.add(
+                        Rectangle::new()
+                            .set("x", x)
+                            .set("y", top as f32 + height as f32 - lower - band_height)
+                            .set("width", (width as f32 / divisor).max(1.0))
+                            .set("height", band_height)
+                            .set("fill", color)
+                            .set("fill-opacity", [1.0, 0.64, 0.78][index]),
+                    );
+                    lower += band_height;
+                }
+            }
+            return Box::new(group);
+        }
+
         if let Some(colors) = &plot.colors {
             let divisor = plot.heights.len().max(1) as f32;
-            let center = top as f32 + height as f32 / 2.0;
+            let center = if plot.bottom_aligned {
+                top as f32 + height as f32
+            } else {
+                top as f32 + height as f32 / 2.0
+            };
             let mut group = svg::node::element::Group::new();
             for (index, (&value, color)) in plot.heights.iter().zip(colors).enumerate() {
                 let x = left as f32 + width as f32 * index as f32 / divisor;
@@ -222,7 +303,14 @@ impl WaveformRenderer {
                 group = group.add(
                     Rectangle::new()
                         .set("x", x)
-                        .set("y", center - bar_height / 2.0)
+                        .set(
+                            "y",
+                            if plot.bottom_aligned {
+                                center - bar_height
+                            } else {
+                                center - bar_height / 2.0
+                            },
+                        )
                         .set("width", (width as f32 / divisor).max(1.0))
                         .set("height", bar_height)
                         .set("fill", color.clone()),
@@ -234,7 +322,12 @@ impl WaveformRenderer {
         let center = top as f32 + height as f32 / 2.0;
         let half_height = height as f32 / 2.0;
         let divisor = plot.heights.len().saturating_sub(1).max(1) as f32;
-        let mut data = Data::new().move_to((left, center));
+        let baseline = top as f32 + height as f32;
+        let mut data = if plot.bottom_aligned {
+            Data::new().move_to((left, baseline))
+        } else {
+            Data::new().move_to((left, center))
+        };
         for (index, value) in plot.heights.iter().enumerate() {
             let x = left as f32 + width as f32 * index as f32 / divisor;
             let y = center - (f32::from(*value) / f32::from(plot.maximum.max(1))) * half_height;
@@ -266,10 +359,34 @@ impl WaveformRenderer {
     }
 }
 
+fn blue_color(whiteness: u8) -> String {
+    let brighten = |value: u8| {
+        value.saturating_add(
+            ((u16::from(u8::MAX - value) * u16::from(whiteness.min(7)) + 3) / 7) as u8,
+        )
+    };
+    format!(
+        "#{:02x}{:02x}{:02x}",
+        brighten(0x25),
+        brighten(0x63),
+        brighten(0xeb)
+    )
+}
+
 fn rgb_color(low: u8, mid: u8, high: u8) -> String {
-    // The preview stores frequency energy rather than an explicit RGB color. Use the three
-    // frequency bands as a simple, stable visualization: low=blue, mid=green, high=red.
-    format!("#{high:02x}{mid:02x}{low:02x}")
+    // PWV4 stores energy, not display RGB. Normalize each channel by the column's total so
+    // brightness is represented by the column height rather than lost in a dark raw color.
+    let total = u16::from(low) + u16::from(mid) + u16::from(high);
+    if total == 0 {
+        return String::from("#000000");
+    }
+    let channel = |value: u8| ((u16::from(value) * 255 + total / 2) / total) as u8;
+    format!(
+        "#{:02x}{:02x}{:02x}",
+        channel(high),
+        channel(mid),
+        channel(low)
+    )
 }
 
 #[cfg(test)]
