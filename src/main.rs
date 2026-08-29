@@ -72,9 +72,9 @@ enum Commands {
         #[arg(long, short = 'f', value_enum, default_value_t = DumpFormat::Debug)]
         format: DumpFormat,
     },
-    /// Render the monochrome waveform preview from an ANLZ file to SVG.
+    /// Render waveform previews from related ANLZ files to one SVG.
     RenderWaveforms {
-        /// File to parse.
+        /// ANLZ file to parse; sibling .DAT, .EXT, and .2EX files are included when present.
         #[arg(value_name = "ANLZ_FILE")]
         path: PathBuf,
         /// SVG file to write.
@@ -311,11 +311,28 @@ fn dump_anlz(path: &Path, format: DumpFormat) -> rekordcrate::Result<()> {
     Ok(())
 }
 
+fn related_anlz_paths(path: &Path) -> Vec<PathBuf> {
+    let mut paths = vec![path.to_path_buf()];
+    for extension in ["DAT", "EXT", "2EX"] {
+        let sibling = path.with_extension(extension);
+        if sibling != path && sibling.is_file() {
+            paths.push(sibling);
+        }
+    }
+    paths
+}
+
 fn render_waveforms(path: &Path, output: &Path) -> rekordcrate::Result<()> {
-    let mut reader = File::open(path)?;
-    let anlz = ANLZ::read(&mut reader)?;
+    let anlzs = related_anlz_paths(path)
+        .iter()
+        .map(|path| {
+            let mut reader = File::open(path)?;
+            Ok(ANLZ::read(&mut reader)?)
+        })
+        .collect::<rekordcrate::Result<Vec<_>>>()?;
+    let anlz_refs = anlzs.iter().collect::<Vec<_>>();
     let output_file = File::create(output)?;
-    WaveformRenderer::default().render_to(&anlz, output_file)?;
+    WaveformRenderer::default().render_anlzs_to(&anlz_refs, output_file)?;
     println!("Rendered waveform SVG to {}", output.display());
     Ok(())
 }
