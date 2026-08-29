@@ -55,9 +55,15 @@ impl WaveformRenderer {
 
     /// Renders all supported waveform previews in an ANLZ file to an SVG document.
     pub fn render_anlz(&self, anlz: &ANLZ) -> Result<Document> {
-        let plots = anlz
-            .sections
+        let anlzs = [anlz];
+        self.render_anlzs(&anlzs)
+    }
+
+    /// Renders all supported waveform previews from multiple ANLZ files to one SVG document.
+    pub fn render_anlzs(&self, anlzs: &[&ANLZ]) -> Result<Document> {
+        let plots = anlzs
             .iter()
+            .flat_map(|anlz| anlz.sections.iter())
             .filter_map(|section| match &section.content {
                 Content::WaveformPreview(preview) => Some(Plot {
                     label: "PWAV",
@@ -248,7 +254,13 @@ impl WaveformRenderer {
 
     /// Renders an ANLZ file and writes the SVG document to a writer.
     pub fn render_to<W: Write>(&self, anlz: &ANLZ, writer: W) -> Result<()> {
-        let document = self.render_anlz(anlz)?;
+        let anlzs = [anlz];
+        self.render_anlzs_to(&anlzs, writer)
+    }
+
+    /// Renders multiple ANLZ files and writes one SVG document to a writer.
+    pub fn render_anlzs_to<W: Write>(&self, anlzs: &[&ANLZ], writer: W) -> Result<()> {
+        let document = self.render_anlzs(anlzs)?;
         svg::write(writer, &document)?;
         Ok(())
     }
