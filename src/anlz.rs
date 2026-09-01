@@ -1615,7 +1615,7 @@ mod tests {
             .sections
             .iter()
             .find_map(|section| match &section.content {
-                Content::TinyWaveformPreview(preview) => Some(preview),
+                Content::WaveformBluePreview(preview) => Some(preview),
                 _ => None,
             })
             .unwrap();
