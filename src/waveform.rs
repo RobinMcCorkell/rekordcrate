@@ -374,18 +374,20 @@ fn blue_color(whiteness: u8) -> String {
 }
 
 fn rgb_color(low: u8, mid: u8, high: u8) -> String {
-    // PWV4 stores energy, not display RGB. Normalize each channel by the column's total so
-    // brightness is represented by the column height rather than lost in a dark raw color.
-    let total = u16::from(low) + u16::from(mid) + u16::from(high);
-    if total == 0 {
+    // PWV4 columns store frequency band energies, not display RGB. rekordbox draws the color
+    // preview with the low band in red, the mid band in green, and the high band in blue (see
+    // Beat Link's WaveformPreview.segmentColor). Each channel is scaled by the dominant band's
+    // energy so that it is fully saturated.
+    let max = low.max(mid).max(high);
+    if max == 0 {
         return String::from("#000000");
     }
-    let channel = |value: u8| ((u16::from(value) * 255 + total / 2) / total) as u8;
+    let channel = |value: u8| ((u16::from(value) * 255) / u16::from(max)) as u8;
     format!(
         "#{:02x}{:02x}{:02x}",
-        channel(high),
+        channel(low),
         channel(mid),
-        channel(low)
+        channel(high)
     )
 }
 
