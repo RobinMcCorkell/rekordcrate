@@ -85,7 +85,7 @@ impl WaveformRenderer {
                     bands: None,
                     bottom_aligned: true,
                 }),
-                Content::TinyWaveformPreview(preview) => Some(Plot {
+                Content::WaveformBluePreview(preview) => Some(Plot {
                     label: "PWV2",
                     heights: preview
                         .data
@@ -97,7 +97,7 @@ impl WaveformRenderer {
                     bands: None,
                     bottom_aligned: true,
                 }),
-                Content::WaveformColorPreview(preview) => Some(Plot {
+                Content::WaveformRGBPreview(preview) => Some(Plot {
                     label: "PWV4",
                     heights: preview
                         .data
