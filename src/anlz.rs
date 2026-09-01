@@ -85,7 +85,7 @@ pub enum ContentKind {
     /// Smaller version of the fixed-width monochrome preview of the track waveform (for the
     /// CDJ-900).
     #[brw(magic = b"PWV2")]
-    TinyWaveformPreview,
+    WaveformBluePreview,
     /// Variable-width large monochrome version of the track waveform.
     ///
     /// Used in `.EXT` files.
@@ -95,7 +95,7 @@ pub enum ContentKind {
     ///
     /// Used in `.EXT` files.
     #[brw(magic = b"PWV4")]
-    WaveformColorPreview,
+    WaveformRGBPreview,
     /// Variable-width large colored version of the track waveform.
     ///
     /// Used in `.EXT` files.
@@ -532,7 +532,7 @@ impl Serialize for WaveformPreviewColumn {
     }
 }
 
-impl Default for TinyWaveformPreviewColumn {
+impl Default for WaveformBluePreviewColumn {
     fn default() -> Self {
         Self::new()
     }
@@ -545,8 +545,8 @@ impl Default for TinyWaveformPreviewColumn {
 #[bitfield]
 #[derive(BinRead, BinWrite, Debug, PartialEq, Eq, Clone, Copy)]
 #[br(big, map = Self::from_bytes)]
-#[bw(big, map = |x: &TinyWaveformPreviewColumn| x.into_bytes())]
-pub struct TinyWaveformPreviewColumn {
+#[bw(big, map = |x: &WaveformBluePreviewColumn| x.into_bytes())]
+pub struct WaveformBluePreviewColumn {
     /// Height of the Column in pixels.
     pub height: B4,
     #[allow(dead_code)]
@@ -554,13 +554,13 @@ pub struct TinyWaveformPreviewColumn {
 }
 
 #[cfg(feature = "json")]
-impl Serialize for TinyWaveformPreviewColumn {
+impl Serialize for WaveformBluePreviewColumn {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         use serde::ser::SerializeStruct;
-        let mut state = serializer.serialize_struct("TinyWaveformPreviewColumn", 2)?;
+        let mut state = serializer.serialize_struct("WaveformBluePreviewColumn", 2)?;
         state.serialize_field("unused", &self.unused())?;
         state.serialize_field("height", &self.height())?;
         state.end()
@@ -575,7 +575,7 @@ impl Serialize for TinyWaveformPreviewColumn {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 #[cfg_attr(feature = "json", derive(Serialize))]
 #[brw(big)]
-pub struct WaveformColorPreviewColumn {
+pub struct WaveformRGBPreviewColumn {
     /// Unknown field (somehow encodes the "whiteness").
     unknown1: u8,
     /// Unknown field (somehow encodes the "whiteness").
@@ -797,8 +797,8 @@ pub enum Content {
     #[br(pre_assert(header.kind == ContentKind::WaveformPreview))]
     WaveformPreview(#[br(args(header.clone()))] WaveformPreview),
     /// Smaller version of the fixed-width monochrome preview of the track waveform.
-    #[br(pre_assert(header.kind == ContentKind::TinyWaveformPreview))]
-    TinyWaveformPreview(#[br(args(header.clone()))] TinyWaveformPreview),
+    #[br(pre_assert(header.kind == ContentKind::WaveformBluePreview))]
+    WaveformBluePreview(#[br(args(header.clone()))] WaveformBluePreview),
     /// Variable-width large monochrome version of the track waveform.
     ///
     /// Used in `.EXT` files.
@@ -807,8 +807,8 @@ pub enum Content {
     /// Fixed-width colored preview of the track waveform.
     ///
     /// Used in `.EXT` files.
-    #[br(pre_assert(header.kind == ContentKind::WaveformColorPreview))]
-    WaveformColorPreview(#[br(args(header.clone()))] WaveformColorPreview),
+    #[br(pre_assert(header.kind == ContentKind::WaveformRGBPreview))]
+    WaveformRGBPreview(#[br(args(header.clone()))] WaveformRGBPreview),
     /// Variable-width large colored version of the track waveform.
     ///
     /// Used in `.EXT` files.
@@ -964,7 +964,7 @@ pub struct WaveformPreview {
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(Serialize))]
 #[br(import(header: Header))]
-pub struct TinyWaveformPreview {
+pub struct WaveformBluePreview {
     /// Unknown field.
     #[br(temp)]
     #[br(assert(len_preview == header.content_size()))]
@@ -975,7 +975,7 @@ pub struct TinyWaveformPreview {
     unknown: u32,
     /// Waveform preview column data.
     #[br(count = len_preview)]
-    pub data: Vec<TinyWaveformPreviewColumn>,
+    pub data: Vec<WaveformBluePreviewColumn>,
 }
 
 /// Variable-width large monochrome version of the track waveform.
@@ -1016,7 +1016,7 @@ pub struct WaveformDetail {
 #[derive(Debug, PartialEq, Eq)]
 #[cfg_attr(feature = "json", derive(Serialize))]
 #[br(import(header: Header))]
-pub struct WaveformColorPreview {
+pub struct WaveformRGBPreview {
     /// Size of a single entry, always 6.
     #[br(temp)]
     #[br(assert(len_entry_bytes == 6))]
@@ -1033,7 +1033,7 @@ pub struct WaveformColorPreview {
     unknown: u32,
     /// Waveform preview column data.
     #[br(count = len_entries)]
-    pub data: Vec<WaveformColorPreviewColumn>,
+    pub data: Vec<WaveformRGBPreviewColumn>,
 }
 
 /// Variable-width large colored version of the track waveform.
@@ -1573,7 +1573,7 @@ mod tests {
             .sections
             .iter()
             .find_map(|section| match &section.content {
-                Content::WaveformColorPreview(preview) => Some(preview),
+                Content::WaveformRGBPreview(preview) => Some(preview),
                 _ => None,
             })
             .unwrap();
