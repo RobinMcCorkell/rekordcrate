@@ -113,6 +113,8 @@ All notable changes to this project will be documented in this file.
 - xml: Add `xml` feature flag
 - xml: Remove `entries` and rename `tracks` in `Collection`
 - cli: Propagate serde_json errors instead of panicking
+- Improve CLI error handling
+- Shorten syntax of run function removing map_err
 
 ### Testing
 
