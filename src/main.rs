@@ -516,11 +516,9 @@ fn run() -> CliResult<()> {
     let cli = Cli::parse();
 
     match &cli.command {
-        Commands::ListPlaylists { path } => list_playlists(path).map_err(Into::into),
-        Commands::ListSettings { path } => list_settings(path).map_err(Into::into),
-        Commands::ExportPlaylists { path, output_dir } => {
-            export_playlists(path, output_dir).map_err(Into::into)
-        }
+        Commands::ListPlaylists { path } => list_playlists(path)?,
+        Commands::ListSettings { path } => list_settings(path)?,
+        Commands::ExportPlaylists { path, output_dir } => export_playlists(path, output_dir)?,
         Commands::DumpPDB {
             path,
             db_type,
@@ -528,20 +526,21 @@ fn run() -> CliResult<()> {
             format,
         } => {
             let db_type = guess_db_type(path, db_type.as_deref())?;
-            dump_pdb(path, db_type, *parse_unknown_tables, *format).map_err(Into::into)
+            dump_pdb(path, db_type, *parse_unknown_tables, *format)?
         }
-        Commands::DumpANLZ { path, format } => dump_anlz(path, *format).map_err(Into::into),
+        Commands::DumpANLZ { path, format } => dump_anlz(path, *format)?,
         Commands::DumpSetting {
             path,
             setting_type,
             format,
         } => {
             let setting_type = guess_setting_type(path, setting_type.as_deref())?;
-            dump_setting(path, setting_type, *format).map_err(Into::into)
+            dump_setting(path, setting_type, *format)?
         }
         #[cfg(feature = "xml")]
-        Commands::DumpXML { path } => dump_xml(path).map_err(Into::into),
+        Commands::DumpXML { path } => dump_xml(path)?,
     }
+    Ok(())
 }
 
 fn main() -> ExitCode {
